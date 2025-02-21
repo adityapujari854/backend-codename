@@ -6,14 +6,17 @@ import requests
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from passlib.context import CryptContext
-from jose import JWTError, jwt
 from datetime import datetime, timedelta
+import jwt
 
 # ✅ Load environment variables
 load_dotenv()
 
 # ✅ MongoDB Connection
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://adityapujari542:XQTSjRrFFQpIlGoM@cluster0.dxy3w.mongodb.net/")
+MONGO_URI = os.getenv("MONGO_URI")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+FOURSQUARE_API_KEY = os.getenv("FOURSQUARE_API_KEY")
+
 client = MongoClient(MONGO_URI)
 db = client["homezy_db"]
 services_collection = db["services"]
@@ -21,7 +24,6 @@ bookings_collection = db["bookings"]
 users_collection = db["users"]
 cart_collection = db["cart"]
 
-# ✅ FastAPI App
 app = FastAPI()
 
 # ✅ Enable CORS
@@ -33,86 +35,67 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ Security Settings
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
-
+# ✅ Password Hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# ✅ Pydantic Models
+# ✅ User Signup Model
 class UserSignup(BaseModel):
-    username: str
     email: str
     password: str
 
+# ✅ User Login Model
 class UserLogin(BaseModel):
-    username: str
+    email: str
     password: str
 
-class BookingData(BaseModel):
-    user_id: str
-    service_name: str
-    provider_name: str
-    price: int
-    user_details: dict
-
-class CartItem(BaseModel):
-    user_id: str
-    service_name: str
-    provider_name: str
+# ✅ Booking Model
+class Booking(BaseModel):
+    email: str
+    name: str
+    phone: str
+    address: str
+    serviceName: str
+    providerName: str
     price: int
 
-# ✅ Hashing Password
-def hash_password(password: str):
-    return pwd_context.hash(password)
+# ✅ Generate JWT Token
+def create_jwt_token(email: str):
+    payload = {"sub": email, "exp": datetime.utcnow() + timedelta(days=1)}
+    token = jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
+    return token
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-# ✅ JWT Token Creation
-def create_access_token(data: dict, expires_delta: timedelta = None):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-# ✅ User Signup
+# ✅ Signup API
 @app.post("/api/signup")
 def signup(user: UserSignup):
-    existing_user = users_collection.find_one({"username": user.username})
+    existing_user = users_collection.find_one({"email": user.email})
     if existing_user:
-        raise HTTPException(status_code=400, detail="Username already exists")
-    
-    hashed_password = hash_password(user.password)
-    users_collection.insert_one({
-        "username": user.username,
-        "email": user.email,
-        "password": hashed_password
-    })
+        raise HTTPException(status_code=400, detail="User already exists")
+
+    hashed_password = pwd_context.hash(user.password)
+    users_collection.insert_one({"email": user.email, "password": hashed_password})
     return {"message": "User registered successfully"}
 
-# ✅ User Login
+# ✅ Login API
 @app.post("/api/login")
 def login(user: UserLogin):
-    db_user = users_collection.find_one({"username": user.username})
-    if not db_user or not verify_password(user.password, db_user["password"]):
-        raise HTTPException(status_code=400, detail="Invalid username or password")
-    
-    access_token = create_access_token({"sub": user.username})
-    return {"access_token": access_token, "token_type": "bearer"}
+    existing_user = users_collection.find_one({"email": user.email})
+    if not existing_user or not pwd_context.verify(user.password, existing_user["password"]):
+        raise HTTPException(status_code=400, detail="Invalid email or password")
 
-# ✅ Fetch all services from MongoDB
+    token = create_jwt_token(user.email)
+    return {"message": "Login successful", "token": token}
+
+# ✅ Fetch all services
 @app.get("/api/services")
 def get_services():
-    services = list(services_collection.find({}, {"_id": 0}))  # Exclude _id
+    services = list(services_collection.find({}, {"_id": 0}))
     return {"services": services}
 
 # ✅ Fetch service providers from Foursquare API
 @app.get("/api/providers")
 def get_providers(service_name: str, city: str = "Pune"):
     headers = {
-        "Authorization": os.getenv("FOURSQUARE_API_KEY"),
+        "Authorization": FOURSQUARE_API_KEY,
         "Accept": "application/json",
     }
     params = {"query": service_name, "near": city, "limit": 10}
@@ -120,36 +103,39 @@ def get_providers(service_name: str, city: str = "Pune"):
     try:
         response = requests.get("https://api.foursquare.com/v3/places/search", headers=headers, params=params)
         data = response.json()
-        providers = [{
-            "business_name": place["name"],
-            "address": place["location"].get("formatted_address", "Address not available"),
-            "contact_number": place.get("tel", "Contact not available"),
-            "website": place.get("website", ""),
-        } for place in data.get("results", [])]
+        providers = [
+            {
+                "business_name": place["name"],
+                "address": place["location"].get("formatted_address", "Address not available"),
+                "contact_number": place.get("tel", "Contact not available"),
+                "website": place.get("website", ""),
+            }
+            for place in data.get("results", [])
+        ]
         return {"providers": providers}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ✅ Save a booking (Requires user login)
+# ✅ Save a booking
 @app.post("/api/bookings")
-def create_booking(booking: BookingData):
+def create_booking(booking: Booking):
     bookings_collection.insert_one(booking.dict())
     return {"message": "Booking confirmed"}
 
-# ✅ Add item to cart
-@app.post("/api/cart/add")
-def add_to_cart(cart_item: CartItem):
-    cart_collection.insert_one(cart_item.dict())
-    return {"message": "Item added to cart"}
+# ✅ Add service to cart
+@app.post("/api/cart")
+def add_to_cart(data: dict):
+    user_email = data.get("email")
+    service = data.get("service")
 
-# ✅ Fetch user's cart items
-@app.get("/api/cart/{user_id}")
-def get_cart(user_id: str):
-    items = list(cart_collection.find({"user_id": user_id}, {"_id": 0}))
-    return {"cart": items}
+    if not user_email or not service:
+        raise HTTPException(status_code=400, detail="Invalid request")
 
-# ✅ Remove item from cart
-@app.delete("/api/cart/remove/{user_id}/{service_name}")
-def remove_from_cart(user_id: str, service_name: str):
-    cart_collection.delete_one({"user_id": user_id, "service_name": service_name})
-    return {"message": "Item removed from cart"}
+    cart_collection.insert_one({"email": user_email, "service": service})
+    return {"message": "Service added to cart"}
+
+# ✅ Fetch cart items
+@app.get("/api/cart/{email}")
+def get_cart_items(email: str):
+    cart_items = list(cart_collection.find({"email": email}, {"_id": 0, "email": 0}))
+    return {"cart": cart_items}
