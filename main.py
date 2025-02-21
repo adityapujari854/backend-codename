@@ -26,25 +26,25 @@ cart_collection = db["cart"]
 
 app = FastAPI()
 
-# ✅ Enable CORS
+# ✅ Enable CORS (Fixed)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Change this for production
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["Access-Control-Allow-Origin"],
 )
 
 # ✅ Password Hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# ✅ User Signup Model
+# ✅ User Models
 class UserSignup(BaseModel):
     name: str
     email: EmailStr
     password: str
 
-# ✅ User Login Model
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
@@ -95,7 +95,7 @@ def signup(user: UserSignup):
 
     return {"message": "User registered successfully"}
 
-# ✅ Login API
+# ✅ Login API (Fixed)
 @app.post("/api/login")
 def login(user: UserLogin):
     existing_user = users_collection.find_one({"email": user.email})
@@ -121,7 +121,7 @@ def login(user: UserLogin):
         "name": existing_user["name"],
     }
 
-# ✅ Logout API (Client-side should remove token)
+# ✅ Logout API
 @app.post("/api/logout")
 def logout():
     return {"message": "Logged out successfully"}
@@ -132,7 +132,7 @@ def verify_token(authorization: str = Header(None)):
     user_email = get_current_user(authorization)
     return {"message": "Token is valid", "email": user_email}
 
-# ✅ Fetch User Details API (Requires authentication)
+# ✅ Fetch User Details API
 @app.get("/api/user")
 def get_user(authorization: str = Header(None)):
     email = get_current_user(authorization)
@@ -201,3 +201,8 @@ def get_cart_items(authorization: str = Header(None)):
     user_email = get_current_user(authorization)
     cart_items = list(cart_collection.find({"email": user_email}, {"_id": 0, "email": 0}))
     return {"cart": cart_items}
+
+# ✅ FIX: Allow Preflight CORS Requests
+@app.options("/{full_path:path}")
+async def preflight_handler(full_path: str):
+    return {"message": "Preflight request allowed"}
