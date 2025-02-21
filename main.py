@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 load_dotenv()
 
 # ✅ MongoDB Connection
-MONGO_URI = os.getenv("MONGO_URI", "your-mongodb-connection-string")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://adityapujari542:XQTSjRrFFQpIlGoM@cluster0.dxy3w.mongodb.net/")
 client = MongoClient(MONGO_URI)
 db = client["homezy_db"]
 services_collection = db["services"]
@@ -53,7 +53,7 @@ class Booking(BaseModel):
     price: int
 
 # ✅ Foursquare API Config
-FOURSQUARE_API_KEY = "your-foursquare-api-key"
+FOURSQUARE_API_KEY = "fsq3LYB6FD4cl0rKy+iRre2J6vX3OYbh/RT7ZBwx0wfb2C4="
 FOURSQUARE_URL = "https://api.foursquare.com/v3/places/search"
 
 # ✅ Hash password function
