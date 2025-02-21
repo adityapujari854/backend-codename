@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Header
 from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
@@ -65,6 +65,24 @@ def create_jwt_token(email: str):
     token = jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
     return token
 
+# ✅ Decode & Verify JWT Token
+def verify_jwt_token(token: str):
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
+        return payload["sub"]
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# ✅ Middleware to get the current user from JWT
+def get_current_user(authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header missing")
+    
+    token = authorization.split(" ")[1]  # Extract token from "Bearer <token>"
+    return verify_jwt_token(token)
+
 # ✅ Signup API
 @app.post("/api/signup")
 def signup(user: UserSignup):
@@ -81,8 +99,12 @@ def signup(user: UserSignup):
 @app.post("/api/login")
 def login(user: UserLogin):
     existing_user = users_collection.find_one({"email": user.email})
-    if not existing_user or not pwd_context.verify(user.password, existing_user["password"]):
-        raise HTTPException(status_code=400, detail="Invalid email or password")
+    if not existing_user:
+        raise HTTPException(status_code=400, detail="User not found")
+
+    # ✅ Password Verification
+    if not pwd_context.verify(user.password, existing_user["password"]):
+        raise HTTPException(status_code=400, detail="Invalid password")
 
     token = create_jwt_token(user.email)
     return {
@@ -91,9 +113,21 @@ def login(user: UserLogin):
         "name": existing_user["name"],
     }
 
-# ✅ Fetch User Details API
-@app.get("/api/user/{email}")
-def get_user(email: str):
+# ✅ Logout API (Client-side should remove token)
+@app.post("/api/logout")
+def logout():
+    return {"message": "Logged out successfully"}
+
+# ✅ Verify JWT Token API
+@app.get("/api/verify-token")
+def verify_token(authorization: str = Header(None)):
+    user_email = get_current_user(authorization)
+    return {"message": "Token is valid", "email": user_email}
+
+# ✅ Fetch User Details API (Requires authentication)
+@app.get("/api/user")
+def get_user(authorization: str = Header(None)):
+    email = get_current_user(authorization)
     user = users_collection.find_one({"email": email}, {"_id": 0, "password": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -130,26 +164,32 @@ def get_providers(service_name: str, city: str = "Pune"):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ✅ Save a booking
+# ✅ Save a booking (Requires authentication)
 @app.post("/api/bookings")
-def create_booking(booking: Booking):
+def create_booking(booking: Booking, authorization: str = Header(None)):
+    user_email = get_current_user(authorization)
+
+    if user_email != booking.email:
+        raise HTTPException(status_code=403, detail="Unauthorized booking request")
+
     bookings_collection.insert_one(booking.dict())
     return {"message": "Booking confirmed"}
 
-# ✅ Add service to cart
+# ✅ Add service to cart (Requires authentication)
 @app.post("/api/cart")
-def add_to_cart(data: dict):
-    user_email = data.get("email")
+def add_to_cart(data: dict, authorization: str = Header(None)):
+    user_email = get_current_user(authorization)
     service = data.get("service")
 
-    if not user_email or not service:
+    if not service:
         raise HTTPException(status_code=400, detail="Invalid request")
 
     cart_collection.insert_one({"email": user_email, "service": service})
     return {"message": "Service added to cart"}
 
-# ✅ Fetch cart items
-@app.get("/api/cart/{email}")
-def get_cart_items(email: str):
-    cart_items = list(cart_collection.find({"email": email}, {"_id": 0, "email": 0}))
+# ✅ Fetch cart items (Requires authentication)
+@app.get("/api/cart")
+def get_cart_items(authorization: str = Header(None)):
+    user_email = get_current_user(authorization)
+    cart_items = list(cart_collection.find({"email": user_email}, {"_id": 0, "email": 0}))
     return {"cart": cart_items}
