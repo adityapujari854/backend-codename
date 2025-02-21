@@ -14,8 +14,8 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 load_dotenv()
 
 # ✅ MongoDB Connection
-MONGO_URI = os.getenv("MONGO_URI", "your-mongodb-uri")
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")  # 🔑 Store in .env
+MONGO_URI = os.getenv("MONGO_URI")
+SECRET_KEY = os.getenv("SECRET_KEY")  # 🔑 Store in .env
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
