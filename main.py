@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import os
 import requests
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import jwt
@@ -40,17 +40,18 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # ✅ User Signup Model
 class UserSignup(BaseModel):
-    email: str
+    name: str
+    email: EmailStr
     password: str
 
 # ✅ User Login Model
 class UserLogin(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 # ✅ Booking Model
 class Booking(BaseModel):
-    email: str
+    email: EmailStr
     name: str
     phone: str
     address: str
@@ -72,7 +73,8 @@ def signup(user: UserSignup):
         raise HTTPException(status_code=400, detail="User already exists")
 
     hashed_password = pwd_context.hash(user.password)
-    users_collection.insert_one({"email": user.email, "password": hashed_password})
+    users_collection.insert_one({"name": user.name, "email": user.email, "password": hashed_password})
+
     return {"message": "User registered successfully"}
 
 # ✅ Login API
@@ -83,7 +85,19 @@ def login(user: UserLogin):
         raise HTTPException(status_code=400, detail="Invalid email or password")
 
     token = create_jwt_token(user.email)
-    return {"message": "Login successful", "token": token}
+    return {
+        "message": "Login successful",
+        "token": token,
+        "name": existing_user["name"],
+    }
+
+# ✅ Fetch User Details API
+@app.get("/api/user/{email}")
+def get_user(email: str):
+    user = users_collection.find_one({"email": email}, {"_id": 0, "password": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"user": user}
 
 # ✅ Fetch all services
 @app.get("/api/services")
