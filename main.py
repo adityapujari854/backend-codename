@@ -99,12 +99,19 @@ def signup(user: UserSignup):
 @app.post("/api/login")
 def login(user: UserLogin):
     existing_user = users_collection.find_one({"email": user.email})
+    
     if not existing_user:
         raise HTTPException(status_code=400, detail="User not found")
 
+    print("🛠 Stored Password Hash:", existing_user["password"])
+    print("🔑 User Entered Password:", user.password)
+
     # ✅ Password Verification
     if not pwd_context.verify(user.password, existing_user["password"]):
+        print("❌ Password Mismatch!")
         raise HTTPException(status_code=400, detail="Invalid password")
+
+    print("✅ Password Matched!")
 
     token = create_jwt_token(user.email)
     return {
