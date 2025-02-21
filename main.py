@@ -77,9 +77,9 @@ def verify_jwt_token(token: str):
 
 # ✅ Middleware to get the current user from JWT
 def get_current_user(authorization: str = Header(None)):
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header missing")
-    
+    if not authorization or "Bearer " not in authorization:
+        raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
+
     token = authorization.split(" ")[1]  # Extract token from "Bearer <token>"
     return verify_jwt_token(token)
 
@@ -99,12 +99,13 @@ def signup(user: UserSignup):
 @app.post("/api/login")
 def login(user: UserLogin):
     existing_user = users_collection.find_one({"email": user.email})
-    
+
     if not existing_user:
         raise HTTPException(status_code=400, detail="User not found")
 
-    print("🛠 Stored Password Hash:", existing_user["password"])
-    print("🔑 User Entered Password:", user.password)
+    print(f"🛠 Checking login for {user.email}")
+    print(f"🔑 User Entered Password: {user.password}")
+    print(f"🛠 Stored Password Hash: {existing_user['password']}")
 
     # ✅ Password Verification
     if not pwd_context.verify(user.password, existing_user["password"]):
