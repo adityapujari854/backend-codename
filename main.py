@@ -29,7 +29,7 @@ app = FastAPI()
 # ✅ Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://codename2025.vercel.app"],
+    allow_origins=["FRONTEND_URL"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -79,6 +79,7 @@ def verify_jwt_token(token: str):
 def get_current_user(authorization: str = Header(None)):
     if not authorization or "Bearer " not in authorization:
         raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
+
     token = authorization.split(" ")[1]  # Extract token from "Bearer <token>"
     return verify_jwt_token(token)
 
@@ -94,18 +95,32 @@ def signup(user: UserSignup):
 
     return {"message": "User registered successfully"}
 
+
 # ✅ Login API
 @app.post("/api/login")
 def login(user: UserLogin):
     existing_user = users_collection.find_one({"email": user.email})
+
     if not existing_user:
         raise HTTPException(status_code=400, detail="User not found")
 
+    print(f"🛠 Checking login for {user.email}")
+    print(f"🔑 User Entered Password: {user.password}")
+    print(f"🛠 Stored Hashed Password: {existing_user['password']}")
+
+    # ✅ FIXED: Verify hashed password correctly
     if not pwd_context.verify(user.password, existing_user["password"]):
+        print("❌ Password Mismatch!")
         raise HTTPException(status_code=400, detail="Invalid password")
 
+    print("✅ Password Matched!")
+
     token = create_jwt_token(user.email)
-    return {"message": "Login successful", "token": token, "name": existing_user["name"]}
+    return {
+        "message": "Login successful",
+        "token": token,
+        "name": existing_user["name"],
+    }
 
 # ✅ Logout API
 @app.post("/api/logout")
@@ -115,8 +130,18 @@ def logout():
 # ✅ Verify JWT Token API
 @app.get("/api/verify-token")
 def verify_token(authorization: str = Header(None)):
-    user_email = get_current_user(authorization)
-    return {"message": "Token is valid", "email": user_email}
+    if not authorization or "Bearer " not in authorization:
+        raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
+
+    token = authorization.split(" ")[1]  # Extract token from "Bearer <token>"
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
+        return {"message": "Token is valid", "email": payload["sub"]}
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 # ✅ Fetch User Details API
 @app.get("/api/user")
@@ -133,14 +158,53 @@ def get_services():
     services = list(services_collection.find({}, {"_id": 0}))
     return {"services": services}
 
+# ✅ Fetch service providers from Foursquare API
+@app.get("/api/providers")
+def get_providers(service_name: str, city: str = "Pune"):
+    headers = {
+        "Authorization": FOURSQUARE_API_KEY,
+        "Accept": "application/json",
+    }
+    params = {"query": service_name, "near": city, "limit": 10}
+
+    try:
+        response = requests.get("https://api.foursquare.com/v3/places/search", headers=headers, params=params)
+        data = response.json()
+        providers = [
+            {
+                "business_name": place["name"],
+                "address": place["location"].get("formatted_address", "Address not available"),
+                "contact_number": place.get("tel", "Contact not available"),
+                "website": place.get("website", ""),
+            }
+            for place in data.get("results", [])
+        ]
+        return {"providers": providers}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ✅ Save a booking (Requires authentication)
 @app.post("/api/bookings")
 def create_booking(booking: Booking, authorization: str = Header(None)):
     user_email = get_current_user(authorization)
+
     if user_email != booking.email:
         raise HTTPException(status_code=403, detail="Unauthorized booking request")
+
     bookings_collection.insert_one(booking.dict())
     return {"message": "Booking confirmed"}
+
+# ✅ Add service to cart (Requires authentication)
+@app.post("/api/cart")
+def add_to_cart(data: dict, authorization: str = Header(None)):
+    user_email = get_current_user(authorization)
+    service = data.get("service")
+
+    if not service:
+        raise HTTPException(status_code=400, detail="Invalid request")
+
+    cart_collection.insert_one({"email": user_email, "service": service})
+    return {"message": "Service added to cart"}
 
 # ✅ Fetch cart items (Requires authentication)
 @app.get("/api/cart")
