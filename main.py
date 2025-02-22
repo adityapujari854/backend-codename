@@ -29,7 +29,7 @@ app = FastAPI()
 # ✅ Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://codename2025.vercel.app"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -142,7 +142,7 @@ def verify_token(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
-        
+
 # ✅ Fetch User Details API
 @app.get("/api/user")
 def get_user(authorization: str = Header(None)):
