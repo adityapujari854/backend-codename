@@ -26,7 +26,7 @@ cart_collection = db["cart"]
 
 app = FastAPI()
 
-# ✅ Enable CORS
+# ✅ Enable CORS (Fix for frontend & backend communication)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://codename2025.vercel.app"],
@@ -49,7 +49,7 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-# ✅ Booking Model
+# ✅ Booking Model (Fixed - Added remarks field)
 class Booking(BaseModel):
     email: EmailStr
     name: str
@@ -58,6 +58,7 @@ class Booking(BaseModel):
     serviceName: str
     providerName: str
     price: int
+    remarks: str  # ✅ Added remarks for additional user input
 
 # ✅ Generate JWT Token
 def create_jwt_token(email: str):
@@ -94,7 +95,6 @@ def signup(user: UserSignup):
     users_collection.insert_one({"name": user.name, "email": user.email, "password": hashed_password})
 
     return {"message": "User registered successfully"}
-
 
 # ✅ Login API
 @app.post("/api/login")
