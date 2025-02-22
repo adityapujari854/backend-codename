@@ -26,10 +26,10 @@ cart_collection = db["cart"]
 
 app = FastAPI()
 
-# ✅ Enable CORS (Fixed)
+# ✅ Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://codename2025.vercel.app"],  # ✅ ONLY ALLOW YOUR FRONTEND
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -90,12 +90,13 @@ def signup(user: UserSignup):
     if existing_user:
         raise HTTPException(status_code=400, detail="User already exists")
 
-    hashed_password = pwd_context.hash(user.password)
+    hashed_password = pwd_context.hash(user.password)  # ✅ Hashing password
     users_collection.insert_one({"name": user.name, "email": user.email, "password": hashed_password})
 
     return {"message": "User registered successfully"}
 
-# ✅ Login API (Fixed)
+
+# ✅ Login API
 @app.post("/api/login")
 def login(user: UserLogin):
     existing_user = users_collection.find_one({"email": user.email})
@@ -105,9 +106,9 @@ def login(user: UserLogin):
 
     print(f"🛠 Checking login for {user.email}")
     print(f"🔑 User Entered Password: {user.password}")
-    print(f"🛠 Stored Password Hash: {existing_user['password']}")
+    print(f"🛠 Stored Hashed Password: {existing_user['password']}")
 
-    # ✅ Password Verification
+    # ✅ FIXED: Verify hashed password correctly
     if not pwd_context.verify(user.password, existing_user["password"]):
         print("❌ Password Mismatch!")
         raise HTTPException(status_code=400, detail="Invalid password")
@@ -129,9 +130,19 @@ def logout():
 # ✅ Verify JWT Token API
 @app.get("/api/verify-token")
 def verify_token(authorization: str = Header(None)):
-    user_email = get_current_user(authorization)
-    return {"message": "Token is valid", "email": user_email}
+    if not authorization or "Bearer " not in authorization:
+        raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
 
+    token = authorization.split(" ")[1]  # Extract token from "Bearer <token>"
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
+        return {"message": "Token is valid", "email": payload["sub"]}
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+        
 # ✅ Fetch User Details API
 @app.get("/api/user")
 def get_user(authorization: str = Header(None)):
