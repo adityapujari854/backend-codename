@@ -24,14 +24,12 @@ bookings_collection = db["bookings"]
 users_collection = db["users"]
 cart_collection = db["cart"]
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "*")
-
 app = FastAPI()
 
 # ✅ Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["FRONTEND_URL"],
+    allow_origins=["https://codename2025.vercel.app"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
