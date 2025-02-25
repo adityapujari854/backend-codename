@@ -1,3 +1,2 @@
-# Import models to make them accessible when importing `models`
-from .user import User
+from .user import User, UserDB
 from .booking import Booking
