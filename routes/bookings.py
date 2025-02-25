@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Header
 from models.booking import Booking
-from database import bookings_collection
+from auth.database.database import bookings_collection
 from middlewares.middleware import get_current_user
 import requests
 import os
