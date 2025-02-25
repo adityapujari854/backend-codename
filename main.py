@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -21,6 +22,15 @@ app = FastAPI(
 # ✅ Apply Middlewares
 setup_middlewares(app)
 
+# ✅ Enable CORS for Railway Hosting
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # ⚠️ Change this to specific frontend URL in production
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
 # ✅ Include Routers
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(bookings_router, prefix="/api/bookings", tags=["Bookings"])
@@ -33,7 +43,8 @@ def home():
     """🏠 Root API Endpoint"""
     return {"message": "Welcome to Homezy API!"}
 
-# ✅ Run the app (Only for local testing)
+# ✅ Run the app (Automatically runs in Railway)
 if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8000))  # Railway assigns a dynamic PORT
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
