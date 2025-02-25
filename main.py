@@ -8,6 +8,7 @@ from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import jwt
+import random
 
 # ✅ Load environment variables
 load_dotenv()
@@ -16,7 +17,7 @@ load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 FOURSQUARE_API_KEY = os.getenv("FOURSQUARE_API_KEY")
-BREVO_API_KEY = os.getenv("BREVO_API_KEY")  # ✅ Added Brevo API key
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 
 client = MongoClient(MONGO_URI)
 db = client["homezy_db"]
@@ -24,6 +25,7 @@ services_collection = db["services"]
 bookings_collection = db["bookings"]
 users_collection = db["users"]
 cart_collection = db["cart"]
+otp_collection = db["otp_verification"]
 
 app = FastAPI()
 
@@ -50,7 +52,11 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-# ✅ Booking Model (Includes remarks)
+class VerifyOTP(BaseModel):
+    email: EmailStr
+    otp: str
+
+# ✅ Booking Model
 class Booking(BaseModel):
     email: EmailStr
     name: str
@@ -59,7 +65,7 @@ class Booking(BaseModel):
     serviceName: str
     providerName: str
     price: int
-    remarks: str  
+    remarks: str
 
 # ✅ Generate JWT Token
 def create_jwt_token(email: str):
@@ -85,27 +91,13 @@ def get_current_user(authorization: str = Header(None)):
     token = authorization.split(" ")[1]
     return verify_jwt_token(token)
 
-# ✅ Function to Send Booking Confirmation Email using Brevo API
-def send_booking_confirmation(booking: Booking):
+# ✅ Function to Send Emails via Brevo API
+def send_email(to_email, subject, html_content):
     email_data = {
         "sender": {"name": "Homezy Services", "email": "no-reply@homezy.com"},
-        "to": [{"email": booking.email, "name": booking.name}],
-        "subject": "Booking Confirmation - Homezy",
-        "htmlContent": f"""
-            <h2>Booking Confirmation</h2>
-            <p>Dear {booking.name},</p>
-            <p>Your booking for <strong>{booking.serviceName}</strong> with <strong>{booking.providerName}</strong> has been confirmed.</p>
-            <p><strong>Details:</strong></p>
-            <ul>
-                <li><strong>Service:</strong> {booking.serviceName}</li>
-                <li><strong>Provider:</strong> {booking.providerName}</li>
-                <li><strong>Price:</strong> ₹{booking.price}</li>
-                <li><strong>Address:</strong> {booking.address}</li>
-                <li><strong>Phone:</strong> {booking.phone}</li>
-                <li><strong>Remarks:</strong> {booking.remarks}</li>
-            </ul>
-            <p>Thank you for choosing Homezy!</p>
-        """
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "htmlContent": html_content,
     }
 
     headers = {
@@ -117,9 +109,9 @@ def send_booking_confirmation(booking: Booking):
     response = requests.post("https://api.brevo.com/v3/smtp/email", json=email_data, headers=headers)
     
     if response.status_code != 201:
-        raise HTTPException(status_code=500, detail="Failed to send confirmation email")
+        raise HTTPException(status_code=500, detail="Failed to send email")
 
-# ✅ Signup API
+# ✅ Signup API with Email Verification
 @app.post("/api/signup")
 def signup(user: UserSignup):
     existing_user = users_collection.find_one({"email": user.email})
@@ -127,9 +119,51 @@ def signup(user: UserSignup):
         raise HTTPException(status_code=400, detail="User already exists")
 
     hashed_password = pwd_context.hash(user.password)
-    users_collection.insert_one({"name": user.name, "email": user.email, "password": hashed_password})
+    users_collection.insert_one({"name": user.name, "email": user.email, "password": hashed_password, "verified": False})
 
-    return {"message": "User registered successfully"}
+    # ✅ Send account creation email
+    send_email(
+        user.email,
+        "🎉 Welcome to Homezy!",
+        f"<h2>Hi {user.name},</h2><p>Your account has been successfully created! 🎉</p><p>Please verify your email to start using Homezy.</p>"
+    )
+
+    return {"message": "User registered successfully. Please verify your email."}
+
+# ✅ OTP Generation & Email Sending
+@app.post("/api/send-otp")
+def send_otp(email: EmailStr):
+    otp = str(random.randint(100000, 999999))
+
+    # ✅ Store OTP in Database
+    otp_collection.update_one(
+        {"email": email},
+        {"$set": {"otp": otp, "created_at": datetime.utcnow()}},
+        upsert=True
+    )
+
+    # ✅ Send OTP Email
+    send_email(
+        email,
+        "🔐 Homezy Email Verification OTP",
+        f"<h2>Your OTP: <strong>{otp}</strong></h2><p>Please enter this OTP to verify your email.</p>"
+    )
+
+    return {"message": "OTP sent successfully."}
+
+# ✅ Verify OTP & Activate Account
+@app.post("/api/verify-otp")
+def verify_otp(data: VerifyOTP):
+    record = otp_collection.find_one({"email": data.email})
+
+    if not record or record["otp"] != data.otp:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    # ✅ Mark user as verified
+    users_collection.update_one({"email": data.email}, {"$set": {"verified": True}})
+    otp_collection.delete_one({"email": data.email})  # ✅ Remove OTP after verification
+
+    return {"message": "Email verified successfully!"}
 
 # ✅ Login API
 @app.post("/api/login")
@@ -142,60 +176,13 @@ def login(user: UserLogin):
     if not pwd_context.verify(user.password, existing_user["password"]):
         raise HTTPException(status_code=400, detail="Invalid password")
 
+    if not existing_user.get("verified", False):
+        raise HTTPException(status_code=400, detail="Email not verified. Please verify your email.")
+
     token = create_jwt_token(user.email)
-    return {
-        "message": "Login successful",
-        "token": token,
-        "name": existing_user["name"],
-    }
+    return {"message": "Login successful", "token": token, "name": existing_user["name"]}
 
-# ✅ Logout API
-@app.post("/api/logout")
-def logout():
-    return {"message": "Logged out successfully"}
-
-# ✅ Verify JWT Token API
-@app.get("/api/verify-token")
-def verify_token(authorization: str = Header(None)):
-    token = authorization.split(" ")[1]
-
-    try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
-        return {"message": "Token is valid", "email": payload["sub"]}
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-# ✅ Fetch all services
-@app.get("/api/services")
-def get_services():
-    services = list(services_collection.find({}, {"_id": 0}))
-    return {"services": services}
-
-# ✅ Fetch service providers from Foursquare API
-@app.get("/api/providers")
-def get_providers(service_name: str, city: str = "Pune"):
-    headers = {"Authorization": FOURSQUARE_API_KEY, "Accept": "application/json"}
-    params = {"query": service_name, "near": city, "limit": 10}
-
-    try:
-        response = requests.get("https://api.foursquare.com/v3/places/search", headers=headers, params=params)
-        data = response.json()
-        providers = [
-            {
-                "business_name": place["name"],
-                "address": place["location"].get("formatted_address", "N/A"),
-                "contact_number": place.get("tel", "N/A"),
-                "website": place.get("website", ""),
-            }
-            for place in data.get("results", [])
-        ]
-        return {"providers": providers}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ✅ Save a booking (Requires authentication)
+# ✅ Save a booking & Send Email Confirmation
 @app.post("/api/bookings")
 def create_booking(booking: Booking, authorization: str = Header(None)):
     user_email = get_current_user(authorization)
@@ -205,10 +192,31 @@ def create_booking(booking: Booking, authorization: str = Header(None)):
 
     bookings_collection.insert_one(booking.dict())
 
-    # ✅ Send email confirmation
-    send_booking_confirmation(booking)
+    # ✅ Send booking confirmation email
+    send_email(
+        booking.email,
+        "📅 Booking Confirmation - Homezy",
+        f"""
+        <h2>Booking Confirmed!</h2>
+        <p>Dear {booking.name},</p>
+        <p>Your booking for <strong>{booking.serviceName}</strong> with <strong>{booking.providerName}</strong> has been confirmed.</p>
+        <ul>
+            <li><strong>Service:</strong> {booking.serviceName}</li>
+            <li><strong>Provider:</strong> {booking.providerName}</li>
+            <li><strong>Price:</strong> ₹{booking.price}</li>
+            <li><strong>Address:</strong> {booking.address}</li>
+        </ul>
+        <p>Thank you for choosing Homezy!</p>
+        """
+    )
 
     return {"message": "Booking confirmed & email sent"}
+
+# ✅ Fetch all services
+@app.get("/api/services")
+def get_services():
+    services = list(services_collection.find({}, {"_id": 0}))
+    return {"services": services}
 
 # ✅ FIX: Allow Preflight CORS Requests
 @app.options("/{full_path:path}")
