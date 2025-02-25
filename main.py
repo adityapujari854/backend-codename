@@ -5,6 +5,8 @@ from routes.bookings import bookings_router
 from routes.send_email import email_router
 from routes.services import services_router
 from routes.providers import providers_router
+from routes.bookings import bookings_router
+from middlewares.middleware import get_current_user 
 
 app = FastAPI()
 

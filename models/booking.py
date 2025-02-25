@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel, EmailStr
 from database import bookings_collection
-from middleware import get_current_user
+from middlewares.middleware import get_current_user
 from email_service import send_email
 
 router = APIRouter()
