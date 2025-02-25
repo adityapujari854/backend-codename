@@ -16,6 +16,7 @@ load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 FOURSQUARE_API_KEY = os.getenv("FOURSQUARE_API_KEY")
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")  # ✅ Added Brevo API key
 
 client = MongoClient(MONGO_URI)
 db = client["homezy_db"]
@@ -26,13 +27,14 @@ cart_collection = db["cart"]
 
 app = FastAPI()
 
-# ✅ Enable CORS (Fixed for frontend & backend communication)
+# ✅ Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["Access-Control-Allow-Origin"],
 )
 
 # ✅ Password Hashing
@@ -48,7 +50,7 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-# ✅ Booking Model (Fixed - Added remarks field)
+# ✅ Booking Model (Includes remarks)
 class Booking(BaseModel):
     email: EmailStr
     name: str
@@ -57,12 +59,13 @@ class Booking(BaseModel):
     serviceName: str
     providerName: str
     price: int
-    remarks: str  # ✅ Added remarks for additional user input
+    remarks: str  
 
 # ✅ Generate JWT Token
 def create_jwt_token(email: str):
     payload = {"sub": email, "exp": datetime.utcnow() + timedelta(days=1)}
-    return jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
+    token = jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
+    return token
 
 # ✅ Decode & Verify JWT Token
 def verify_jwt_token(token: str):
@@ -79,13 +82,48 @@ def get_current_user(authorization: str = Header(None)):
     if not authorization or "Bearer " not in authorization:
         raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
 
-    token = authorization.split(" ")[1]  # Extract token from "Bearer <token>"
+    token = authorization.split(" ")[1]
     return verify_jwt_token(token)
+
+# ✅ Function to Send Booking Confirmation Email using Brevo API
+def send_booking_confirmation(booking: Booking):
+    email_data = {
+        "sender": {"name": "Homezy Services", "email": "no-reply@homezy.com"},
+        "to": [{"email": booking.email, "name": booking.name}],
+        "subject": "Booking Confirmation - Homezy",
+        "htmlContent": f"""
+            <h2>Booking Confirmation</h2>
+            <p>Dear {booking.name},</p>
+            <p>Your booking for <strong>{booking.serviceName}</strong> with <strong>{booking.providerName}</strong> has been confirmed.</p>
+            <p><strong>Details:</strong></p>
+            <ul>
+                <li><strong>Service:</strong> {booking.serviceName}</li>
+                <li><strong>Provider:</strong> {booking.providerName}</li>
+                <li><strong>Price:</strong> ₹{booking.price}</li>
+                <li><strong>Address:</strong> {booking.address}</li>
+                <li><strong>Phone:</strong> {booking.phone}</li>
+                <li><strong>Remarks:</strong> {booking.remarks}</li>
+            </ul>
+            <p>Thank you for choosing Homezy!</p>
+        """
+    }
+
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "api-key": BREVO_API_KEY
+    }
+
+    response = requests.post("https://api.brevo.com/v3/smtp/email", json=email_data, headers=headers)
+    
+    if response.status_code != 201:
+        raise HTTPException(status_code=500, detail="Failed to send confirmation email")
 
 # ✅ Signup API
 @app.post("/api/signup")
 def signup(user: UserSignup):
-    if users_collection.find_one({"email": user.email}):
+    existing_user = users_collection.find_one({"email": user.email})
+    if existing_user:
         raise HTTPException(status_code=400, detail="User already exists")
 
     hashed_password = pwd_context.hash(user.password)
@@ -101,7 +139,6 @@ def login(user: UserLogin):
     if not existing_user:
         raise HTTPException(status_code=400, detail="User not found")
 
-    # ✅ FIXED: Verify hashed password correctly
     if not pwd_context.verify(user.password, existing_user["password"]):
         raise HTTPException(status_code=400, detail="Invalid password")
 
@@ -112,7 +149,7 @@ def login(user: UserLogin):
         "name": existing_user["name"],
     }
 
-# ✅ Logout API (Token is managed client-side)
+# ✅ Logout API
 @app.post("/api/logout")
 def logout():
     return {"message": "Logged out successfully"}
@@ -120,19 +157,15 @@ def logout():
 # ✅ Verify JWT Token API
 @app.get("/api/verify-token")
 def verify_token(authorization: str = Header(None)):
-    email = get_current_user(authorization)
-    return {"message": "Token is valid", "email": email}
+    token = authorization.split(" ")[1]
 
-# ✅ Fetch User Details API
-@app.get("/api/user")
-def get_user(authorization: str = Header(None)):
-    email = get_current_user(authorization)
-    user = users_collection.find_one({"email": email}, {"_id": 0, "password": 0})
-    
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    return {"user": user}
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
+        return {"message": "Token is valid", "email": payload["sub"]}
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 # ✅ Fetch all services
 @app.get("/api/services")
@@ -143,10 +176,7 @@ def get_services():
 # ✅ Fetch service providers from Foursquare API
 @app.get("/api/providers")
 def get_providers(service_name: str, city: str = "Pune"):
-    headers = {
-        "Authorization": FOURSQUARE_API_KEY,
-        "Accept": "application/json",
-    }
+    headers = {"Authorization": FOURSQUARE_API_KEY, "Accept": "application/json"}
     params = {"query": service_name, "near": city, "limit": 10}
 
     try:
@@ -155,8 +185,8 @@ def get_providers(service_name: str, city: str = "Pune"):
         providers = [
             {
                 "business_name": place["name"],
-                "address": place["location"].get("formatted_address", "Address not available"),
-                "contact_number": place.get("tel", "Contact not available"),
+                "address": place["location"].get("formatted_address", "N/A"),
+                "contact_number": place.get("tel", "N/A"),
                 "website": place.get("website", ""),
             }
             for place in data.get("results", [])
@@ -174,26 +204,11 @@ def create_booking(booking: Booking, authorization: str = Header(None)):
         raise HTTPException(status_code=403, detail="Unauthorized booking request")
 
     bookings_collection.insert_one(booking.dict())
-    return {"message": "Booking confirmed"}
 
-# ✅ Add service to cart (Requires authentication)
-@app.post("/api/cart")
-def add_to_cart(data: dict, authorization: str = Header(None)):
-    user_email = get_current_user(authorization)
-    service = data.get("service")
+    # ✅ Send email confirmation
+    send_booking_confirmation(booking)
 
-    if not service:
-        raise HTTPException(status_code=400, detail="Invalid request")
-
-    cart_collection.insert_one({"email": user_email, "service": service})
-    return {"message": "Service added to cart"}
-
-# ✅ Fetch cart items (Requires authentication)
-@app.get("/api/cart")
-def get_cart_items(authorization: str = Header(None)):
-    user_email = get_current_user(authorization)
-    cart_items = list(cart_collection.find({"email": user_email}, {"_id": 0, "email": 0}))
-    return {"cart": cart_items}
+    return {"message": "Booking confirmed & email sent"}
 
 # ✅ FIX: Allow Preflight CORS Requests
 @app.options("/{full_path:path}")
