@@ -8,7 +8,7 @@ class JWTMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next):
         # ✅ Skip authentication for public routes
-        public_routes = ["/api/login", "/api/signup", "/docs", "/openapi.json"]
+        public_routes = ["/api/auth/login", "/api/auth/signup", "/docs", "/openapi.json"]
         if any(request.url.path.startswith(route) for route in public_routes):
             return await call_next(request)
         
@@ -20,13 +20,12 @@ class JWTMiddleware(BaseHTTPMiddleware):
         token = auth_header.split(" ")[1]
         
         try:
-            user_email = verify_jwt_token(token)
-            request.state.user = user_email  # Store user email in request state
+            user_data = verify_jwt_token(token)
+            request.state.user = user_data  # Store user data (email, ID, etc.) in request state
         except HTTPException as e:
             raise HTTPException(status_code=401, detail=str(e.detail))
 
         return await call_next(request)
-
 
 def setup_middlewares(app):
     """ ✅ Function to apply middlewares to the FastAPI app """
