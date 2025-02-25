@@ -32,3 +32,8 @@ app.include_router(providers_router, prefix="/api/providers", tags=["Providers"]
 def home():
     """🏠 Root API Endpoint"""
     return {"message": "Welcome to Homezy API!"}
+
+# ✅ Run the app (Only for local testing)
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -1,22 +1,35 @@
-from fastapi import Request, HTTPException
+from fastapi import Request, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from auth.jwt_handler import verify_jwt_token
 
 class JWTMiddleware(BaseHTTPMiddleware):
-    """ ✅ Middleware for verifying JWT token in requests """
-    
+    """ ✅ Middleware for verifying JWT token in protected routes """
+
     async def dispatch(self, request: Request, call_next):
-        public_routes = ["/api/auth/login", "/api/auth/signup", "/docs", "/openapi.json"]
+        # ✅ Define public routes that do NOT require authentication
+        public_routes = [
+            "/",
+            "/api/auth/login",
+            "/api/auth/signup",
+            "/docs",
+            "/openapi.json",
+            "/favicon.ico",  # ✅ Allow requests for the browser favicon
+            "/api/services",  # ✅ If service listings should be public
+            "/api/providers"  # ✅ If provider search should be public
+        ]
+        
+        # ✅ Skip authentication for public routes
         if any(request.url.path.startswith(route) for route in public_routes):
             return await call_next(request)
 
+        # ✅ Extract authorization token
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Authorization token missing or invalid")
+            return HTTPException(status_code=401, detail="Authorization token missing or invalid")
 
         token = auth_header.split(" ")[1]
-        
+
         try:
             user_email = verify_jwt_token(token)
             request.state.user = user_email  # Store user email in request state
@@ -25,16 +38,28 @@ class JWTMiddleware(BaseHTTPMiddleware):
 
         return await call_next(request)
 
+
+# ✅ Function to Extract User from JWT Token (Used in Routes)
+def get_current_user(authorization: str = Header(None)) -> str:
+    """ ✅ Extracts and verifies user from JWT Token """
+    if not authorization or "Bearer " not in authorization:
+        raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
+
+    token = authorization.split(" ")[1]  # Extract token from "Bearer <token>"
+    return verify_jwt_token(token)
+
+
 def setup_middlewares(app):
     """ ✅ Function to apply middlewares to the FastAPI app """
-    
+
+    # ✅ Enable CORS for frontend-backend communication
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # ⚠️ Restrict in production
+        allow_origins=["*"],  # ⚠️ Change to specific frontend URL in production
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
-        expose_headers=["Access-Control-Allow-Origin"],
     )
 
+    # ✅ Add JWT Authentication Middleware
     app.add_middleware(JWTMiddleware)
