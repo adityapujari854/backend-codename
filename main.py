@@ -26,14 +26,13 @@ cart_collection = db["cart"]
 
 app = FastAPI()
 
-# ✅ Enable CORS (Fix for frontend & backend communication)
+# ✅ Enable CORS (Fixed for frontend & backend communication)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
-    expose_headers=["Access-Control-Allow-Origin"],
 )
 
 # ✅ Password Hashing
@@ -63,8 +62,7 @@ class Booking(BaseModel):
 # ✅ Generate JWT Token
 def create_jwt_token(email: str):
     payload = {"sub": email, "exp": datetime.utcnow() + timedelta(days=1)}
-    token = jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
-    return token
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
 
 # ✅ Decode & Verify JWT Token
 def verify_jwt_token(token: str):
@@ -87,11 +85,10 @@ def get_current_user(authorization: str = Header(None)):
 # ✅ Signup API
 @app.post("/api/signup")
 def signup(user: UserSignup):
-    existing_user = users_collection.find_one({"email": user.email})
-    if existing_user:
+    if users_collection.find_one({"email": user.email}):
         raise HTTPException(status_code=400, detail="User already exists")
 
-    hashed_password = pwd_context.hash(user.password)  # ✅ Hashing password
+    hashed_password = pwd_context.hash(user.password)
     users_collection.insert_one({"name": user.name, "email": user.email, "password": hashed_password})
 
     return {"message": "User registered successfully"}
@@ -104,16 +101,9 @@ def login(user: UserLogin):
     if not existing_user:
         raise HTTPException(status_code=400, detail="User not found")
 
-    print(f"🛠 Checking login for {user.email}")
-    print(f"🔑 User Entered Password: {user.password}")
-    print(f"🛠 Stored Hashed Password: {existing_user['password']}")
-
     # ✅ FIXED: Verify hashed password correctly
     if not pwd_context.verify(user.password, existing_user["password"]):
-        print("❌ Password Mismatch!")
         raise HTTPException(status_code=400, detail="Invalid password")
-
-    print("✅ Password Matched!")
 
     token = create_jwt_token(user.email)
     return {
@@ -122,7 +112,7 @@ def login(user: UserLogin):
         "name": existing_user["name"],
     }
 
-# ✅ Logout API
+# ✅ Logout API (Token is managed client-side)
 @app.post("/api/logout")
 def logout():
     return {"message": "Logged out successfully"}
@@ -130,26 +120,18 @@ def logout():
 # ✅ Verify JWT Token API
 @app.get("/api/verify-token")
 def verify_token(authorization: str = Header(None)):
-    if not authorization or "Bearer " not in authorization:
-        raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
-
-    token = authorization.split(" ")[1]  # Extract token from "Bearer <token>"
-
-    try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
-        return {"message": "Token is valid", "email": payload["sub"]}
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    email = get_current_user(authorization)
+    return {"message": "Token is valid", "email": email}
 
 # ✅ Fetch User Details API
 @app.get("/api/user")
 def get_user(authorization: str = Header(None)):
     email = get_current_user(authorization)
     user = users_collection.find_one({"email": email}, {"_id": 0, "password": 0})
+    
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    
     return {"user": user}
 
 # ✅ Fetch all services
