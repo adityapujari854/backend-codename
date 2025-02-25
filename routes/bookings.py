@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends, Header
 from models.booking import Booking
-from database import bookings_collection  # ✅ Ensure correct import for database
+from database import bookings_collection
 from middlewares.middleware import get_current_user
 from models.user import UserDB
+
 import requests
 import os
 
@@ -16,13 +17,12 @@ if not BREVO_API_KEY:
 # ✅ Initialize Router
 bookings_router = APIRouter()
 
-
 # ✅ Function to Send Booking Confirmation Email via Brevo API
 def send_booking_confirmation(booking: Booking):
     email_data = {
         "sender": {"name": "Homezy Services", "email": BREVO_SENDER_EMAIL},
         "to": [{"email": booking.email, "name": booking.name}],
-        "subject": "📅 Booking Confirmation - Homezy",
+        "subject": "Booking Confirmation - Homezy",
         "htmlContent": f"""
             <h2>📅 Booking Confirmation</h2>
             <p>Dear {booking.name},</p>
@@ -47,19 +47,18 @@ def send_booking_confirmation(booking: Booking):
     }
 
     response = requests.post("https://api.brevo.com/v3/smtp/email", json=email_data, headers=headers)
-
+    
     if response.status_code not in [200, 201]:
         print("❌ Email sending failed:", response.json())
         raise HTTPException(status_code=500, detail="Failed to send confirmation email")
 
-
-# ✅ Save a Booking (Requires authentication)
+# ✅ Save a booking (Requires authentication)
 @bookings_router.post("/")
 def create_booking(booking: Booking, authorization: str = Header(None)):
     user_email = get_current_user(authorization)
 
     if user_email != booking.email:
-        raise HTTPException(status_code=403, detail="⚠️ Unauthorized booking request!")
+        raise HTTPException(status_code=403, detail="Unauthorized booking request")
 
     # ✅ Store booking in the database
     bookings_collection.insert_one(booking.dict(by_alias=True, exclude_unset=True))
@@ -69,8 +68,7 @@ def create_booking(booking: Booking, authorization: str = Header(None)):
 
     return {"message": "✅ Booking confirmed & email sent!"}
 
-
-# ✅ Fetch All Bookings for a User (Requires authentication)
+# ✅ Fetch all bookings for a user (Requires authentication)
 @bookings_router.get("/")
 def get_user_bookings(authorization: str = Header(None)):
     user_email = get_current_user(authorization)

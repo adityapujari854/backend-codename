@@ -16,12 +16,10 @@ class UserSignup(BaseModel):
         """Hashes the user's password before storing in DB."""
         self.password = pwd_context.hash(self.password)
 
-
 # ✅ User Model for Login
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
-
 
 # ✅ User Model in Database
 class UserDB(BaseModel):
@@ -31,7 +29,6 @@ class UserDB(BaseModel):
     is_verified: bool = False  # ✅ User verification status
     otp_code: Optional[str] = None  # ✅ OTP code for verification
     created_at: datetime = Field(default_factory=datetime.utcnow)
-
 
 # ✅ OTP Verification Model
 class VerifyOTP(BaseModel):
