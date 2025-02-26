@@ -1,8 +1,6 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from auth import auth_router  # ✅ Import auth routes
-
 
 # ✅ Import Middleware Setup Function (Handle Missing Middleware Gracefully)
 try:
@@ -43,9 +41,7 @@ app.include_router(bookings_router, prefix="/api/bookings", tags=["Bookings"])
 app.include_router(email_router, prefix="/api/email", tags=["Email"])
 app.include_router(services_router, prefix="/api/services", tags=["Services"])
 app.include_router(providers_router, prefix="/api/providers", tags=["Providers"])
-app.include_router(auth_router, prefix="/api/auth")
-
-
+app.include_router(auth_router, prefix="/api/user")
 
 @app.get("/", tags=["Root"])
 def home():
@@ -57,3 +53,4 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))  # Railway dynamically assigns a PORT
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    
