@@ -1,15 +1,11 @@
-from fastapi import APIRouter, HTTPException, Header
-from pymongo import MongoClient
-from dotenv import load_dotenv
-import os, jwt, random, requests
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
+from pymongo import MongoClient
 from datetime import datetime, timedelta
-from models.user import UserLogin
-from database import users_collection  # ✅ Ensure this is correctly importing the MongoDB collection
+import jwt, os, random, requests
 
 # ✅ Load environment variables
-load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
@@ -34,6 +30,9 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+class RequestOTP(BaseModel):  # ✅ Fixed Model for Request Body
+    email: EmailStr
+
 class VerifyOTP(BaseModel):
     email: EmailStr
     otp: str
@@ -43,11 +42,13 @@ def create_jwt_token(email: str):
     payload = {"sub": email, "exp": datetime.utcnow() + timedelta(days=1)}
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
 
-# ✅ Request OTP (Separate API for Frontend)
+# ✅ Request OTP (Fixed API)
 @auth_router.post("/request-otp")
-def request_otp(email: EmailStr):
-    existing_user = users_collection.find_one({"email": email})
+def request_otp(data: RequestOTP):  # ✅ Use Pydantic model to extract JSON body
+    email = data.email  # ✅ Extract email from request body
 
+    existing_user = users_collection.find_one({"email": email})
+    
     if not existing_user:
         raise HTTPException(status_code=400, detail="User not found")
 
