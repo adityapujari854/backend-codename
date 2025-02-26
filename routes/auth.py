@@ -121,9 +121,6 @@ def login(user: UserLogin):
     if not existing_user or not pwd_context.verify(user.password, existing_user["password"]):
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
-    if not existing_user.get("is_verified"):
-        raise HTTPException(status_code=403, detail="Email not verified. Please verify your email.")
-
     return {
         "message": "Login successful",
         "token": create_jwt_token(user.email),
