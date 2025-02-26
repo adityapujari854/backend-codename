@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from pymongo import MongoClient
@@ -42,13 +42,36 @@ def create_jwt_token(email: str):
     payload = {"sub": email, "exp": datetime.utcnow() + timedelta(days=1)}
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
 
-# ✅ Request OTP (Fixed API)
-@auth_router.post("/request-otp")
-def request_otp(data: RequestOTP):  # ✅ Use Pydantic model to extract JSON body
-    email = data.email  # ✅ Extract email from request body
+# ✅ Verify JWT Token
+def verify_jwt_token(token: str):
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
+        return payload["sub"]
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
+# ✅ Get User Profile API
+@auth_router.get("/user/profile")
+def get_user_profile(authorization: str = Header(None)):
+    if not authorization or "Bearer " not in authorization:
+        raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
+
+    email = verify_jwt_token(authorization.split(" ")[1])  # Extract token & verify
+    user = users_collection.find_one({"email": email}, {"_id": 0, "password": 0, "otp": 0, "otp_expiry": 0})
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {"user": user}
+
+# ✅ Request OTP API (Fixed)
+@auth_router.post("/request-otp")
+def request_otp(data: RequestOTP):
+    email = data.email
     existing_user = users_collection.find_one({"email": email})
-    
+
     if not existing_user:
         raise HTTPException(status_code=400, detail="User not found")
 
@@ -56,7 +79,7 @@ def request_otp(data: RequestOTP):  # ✅ Use Pydantic model to extract JSON bod
     expiry_time = datetime.utcnow() + timedelta(minutes=10)
 
     users_collection.update_one({"email": email}, {"$set": {"otp": otp, "otp_expiry": expiry_time}})
-
+    
     if not send_verification_email(email, otp):
         raise HTTPException(status_code=500, detail="Failed to send OTP email")
 
@@ -79,7 +102,7 @@ def send_verification_email(email: str, otp: str):
         return False
     return True
 
-# ✅ Signup API
+# ✅ Signup API (Fixed)
 @auth_router.post("/signup")
 def signup(user: UserSignup):
     if users_collection.find_one({"email": user.email}):
@@ -102,7 +125,7 @@ def signup(user: UserSignup):
 
     return {"message": "Signup successful! Please verify your email."}
 
-# ✅ Verify OTP
+# ✅ Verify OTP API (Fixed)
 @auth_router.post("/verify-otp")
 def verify_otp(data: VerifyOTP):
     user = users_collection.find_one({"email": data.email})
@@ -111,9 +134,10 @@ def verify_otp(data: VerifyOTP):
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
     users_collection.update_one({"email": data.email}, {"$set": {"is_verified": True}})
+    
     return {"message": "Email verified successfully!"}
 
-# ✅ Login API
+# ✅ Login API (Fixed)
 @auth_router.post("/login")
 def login(user: UserLogin):
     existing_user = users_collection.find_one({"email": user.email})
@@ -125,4 +149,5 @@ def login(user: UserLogin):
         "message": "Login successful",
         "token": create_jwt_token(user.email),
         "name": existing_user["name"],
+        "is_verified": existing_user.get("is_verified", False),
     }
