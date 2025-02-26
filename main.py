@@ -2,8 +2,11 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# ✅ Import Middleware Setup Function
-from middlewares.middleware import setup_middlewares
+# ✅ Import Middleware Setup Function (Handle Missing Middleware Gracefully)
+try:
+    from middlewares.middleware import setup_middlewares
+except ImportError:
+    setup_middlewares = None  # Prevent crashes if middleware is missing
 
 # ✅ Importing Routers
 from routes.auth import auth_router
@@ -19,13 +22,14 @@ app = FastAPI(
     description="API for Homezy Platform"
 )
 
-# ✅ Apply Middlewares
-setup_middlewares(app)
+# ✅ Apply Middlewares (if available)
+if setup_middlewares:
+    setup_middlewares(app)
 
 # ✅ Enable CORS for Railway Hosting
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # ⚠️ Change this to specific frontend URL in production
+    allow_origins=["*"],  # ⚠️ In production, replace "*" with your frontend domain
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -45,6 +49,6 @@ def home():
 
 # ✅ Run the app (Automatically runs in Railway)
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))  # Railway assigns a dynamic PORT
+    port = int(os.getenv("PORT", 8000))  # Railway dynamically assigns a PORT
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
