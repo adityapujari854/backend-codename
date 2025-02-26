@@ -30,7 +30,7 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-class RequestOTP(BaseModel):  # ✅ Fixed Model for Request Body
+class RequestOTP(BaseModel):
     email: EmailStr
 
 class VerifyOTP(BaseModel):
@@ -66,7 +66,7 @@ def get_user_profile(authorization: str = Header(None)):
 
     return {"user": user}
 
-# ✅ Request OTP API (Fixed)
+# ✅ Request OTP API
 @auth_router.post("/request-otp")
 def request_otp(data: RequestOTP):
     email = data.email
@@ -74,6 +74,9 @@ def request_otp(data: RequestOTP):
 
     if not existing_user:
         raise HTTPException(status_code=400, detail="User not found")
+
+    if existing_user.get("is_verified", False):
+        raise HTTPException(status_code=400, detail="User already verified")
 
     otp = str(random.randint(100000, 999999))
     expiry_time = datetime.utcnow() + timedelta(minutes=10)
@@ -102,7 +105,7 @@ def send_verification_email(email: str, otp: str):
         return False
     return True
 
-# ✅ Signup API (Fixed)
+# ✅ Signup API
 @auth_router.post("/signup")
 def signup(user: UserSignup):
     if users_collection.find_one({"email": user.email}):
@@ -125,19 +128,29 @@ def signup(user: UserSignup):
 
     return {"message": "Signup successful! Please verify your email."}
 
-# ✅ Verify OTP API (Fixed)
+# ✅ Verify OTP API (Updated)
 @auth_router.post("/verify-otp")
 def verify_otp(data: VerifyOTP):
     user = users_collection.find_one({"email": data.email})
 
-    if not user or user.get("otp") != data.otp or user.get("otp_expiry") < datetime.utcnow():
+    if not user:
+        raise HTTPException(status_code=400, detail="User not found")
+
+    if user.get("is_verified", False):
+        raise HTTPException(status_code=400, detail="User already verified")
+
+    if user.get("otp") != data.otp or user.get("otp_expiry") < datetime.utcnow():
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
-    users_collection.update_one({"email": data.email}, {"$set": {"is_verified": True}})
-    
+    # ✅ Update `is_verified` & Remove OTP from DB
+    users_collection.update_one(
+        {"email": data.email},
+        {"$set": {"is_verified": True}, "$unset": {"otp": "", "otp_expiry": ""}}
+    )
+
     return {"message": "Email verified successfully!"}
 
-# ✅ Login API (Fixed)
+# ✅ Login API (Updated to return `is_verified`)
 @auth_router.post("/login")
 def login(user: UserLogin):
     existing_user = users_collection.find_one({"email": user.email})
@@ -149,5 +162,5 @@ def login(user: UserLogin):
         "message": "Login successful",
         "token": create_jwt_token(user.email),
         "name": existing_user["name"],
-        "is_verified": existing_user.get("is_verified", False),
+        "is_verified": existing_user.get("is_verified", False),  # ✅ Include `is_verified` status
     }
