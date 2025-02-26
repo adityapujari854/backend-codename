@@ -53,7 +53,7 @@ def verify_jwt_token(token: str):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 # ✅ Get User Profile API
-@auth_router.get("/user/profile")
+@auth_router.get("/profile")
 def get_user_profile(authorization: str = Header(None)):
     if not authorization or "Bearer " not in authorization:
         raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
