@@ -5,6 +5,8 @@ import os, jwt, random, requests
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
+from models.user import UserLogin
+from database import users_collection  # ✅ Ensure this is correctly importing the MongoDB collection
 
 # ✅ Load environment variables
 load_dotenv()
@@ -45,7 +47,7 @@ def create_jwt_token(email: str):
 @auth_router.post("/request-otp")
 def request_otp(email: EmailStr):
     existing_user = users_collection.find_one({"email": email})
-    
+
     if not existing_user:
         raise HTTPException(status_code=400, detail="User not found")
 
@@ -114,10 +116,10 @@ def verify_otp(data: VerifyOTP):
 @auth_router.post("/login")
 def login(user: UserLogin):
     existing_user = users_collection.find_one({"email": user.email})
-    
+
     if not existing_user or not pwd_context.verify(user.password, existing_user["password"]):
         raise HTTPException(status_code=400, detail="Invalid credentials")
-    
+
     if not existing_user.get("is_verified"):
         raise HTTPException(status_code=403, detail="Email not verified. Please verify your email.")
 
