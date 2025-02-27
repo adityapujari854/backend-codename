@@ -1,14 +1,14 @@
 from fastapi import APIRouter, HTTPException, Depends, Header
 from models.booking import Booking
 from database import bookings_collection
-from middlewares.middleware import get_current_user  # ✅ Import fixed
+from middlewares.middleware import get_current_user  # ✅ Import Fixed
 
 import requests
 import os
 
 # ✅ Load Brevo API Key from Environment Variables
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
-BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "no-reply@homezy.com")
+BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL")
 
 if not BREVO_API_KEY:
     raise ValueError("❌ BREVO_API_KEY is not set in the environment variables!")
@@ -51,8 +51,10 @@ def send_booking_confirmation(booking: Booking):
         print("❌ Email sending failed:", response.json())
         raise HTTPException(status_code=500, detail="Failed to send confirmation email")
 
+    print("✅ Email sent successfully to", booking.email)
+
 # ✅ Save a booking (Requires authentication)
-@bookings_router.post("/")
+@bookings_router.post("/", summary="Create a new booking")
 def create_booking(booking: Booking, authorization: str = Header(None)):
     user_email = get_current_user(authorization)
 
@@ -61,6 +63,7 @@ def create_booking(booking: Booking, authorization: str = Header(None)):
 
     # ✅ Store booking in the database
     bookings_collection.insert_one(booking.dict(by_alias=True, exclude_unset=True))
+    print(f"✅ Booking stored in DB for {booking.email}")
 
     # ✅ Send email confirmation
     send_booking_confirmation(booking)
@@ -68,7 +71,7 @@ def create_booking(booking: Booking, authorization: str = Header(None)):
     return {"message": "✅ Booking confirmed & email sent!"}
 
 # ✅ Fetch all bookings for a user (Requires authentication)
-@bookings_router.get("/")
+@bookings_router.get("/", summary="Get all bookings for the logged-in user")
 def get_user_bookings(authorization: str = Header(None)):
     user_email = get_current_user(authorization)
     bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
@@ -76,4 +79,5 @@ def get_user_bookings(authorization: str = Header(None)):
     if not bookings:
         raise HTTPException(status_code=404, detail="⚠️ No bookings found!")
 
+    print(f"✅ {len(bookings)} bookings found for {user_email}")
     return {"bookings": bookings}
