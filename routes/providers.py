@@ -1,12 +1,12 @@
 import os
-import requests
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 from typing import Dict, Any, List
 
 # ✅ Load API Key from Environment Variables
 FOURSQUARE_API_KEY = os.getenv("FOURSQUARE_API_KEY")
 if not FOURSQUARE_API_KEY:
-    raise ValueError("❌ FOURSQUARE_API_KEY is not set in the environment variables!")
+    raise ValueError("❌ ERROR: FOURSQUARE_API_KEY is not set in environment variables!")
 
 # ✅ Initialize Router
 providers_router = APIRouter(prefix="/providers", tags=["Service Providers"])
@@ -14,7 +14,7 @@ providers_router = APIRouter(prefix="/providers", tags=["Service Providers"])
 # ✅ Foursquare API Constants
 FOURSQUARE_API_URL = "https://api.foursquare.com/v3/places/search"
 HEADERS = {
-    "Authorization": FOURSQUARE_API_KEY,
+    "Authorization": f"Bearer {FOURSQUARE_API_KEY}",  # 🔥 Corrected format
     "Accept": "application/json"
 }
 
@@ -32,14 +32,15 @@ async def get_providers(
     params = {"query": service_name, "near": city, "limit": limit}
 
     try:
-        response = requests.get(FOURSQUARE_API_URL, headers=HEADERS, params=params)
-        response.raise_for_status()  # Raise HTTP error if response is not 2xx
+        async with httpx.AsyncClient() as client:
+            response = await client.get(FOURSQUARE_API_URL, headers=HEADERS, params=params)
+            response.raise_for_status()  # Raise HTTP error if response is not 2xx
+            data = response.json()
 
-        data = response.json()
         results = data.get("results", [])
 
         if not results:
-            raise HTTPException(status_code=404, detail="No providers found for the given service.")
+            raise HTTPException(status_code=404, detail="⚠️ No providers found for the given service.")
 
         providers: List[Dict[str, str]] = [
             {
@@ -47,14 +48,16 @@ async def get_providers(
                 "address": place.get("location", {}).get("formatted_address", "Address not available"),
                 "contact_number": place.get("tel", "Contact not available"),
                 "website": place.get("website", "N/A"),
-                "categories": [category["name"] for category in place.get("categories", [])]  # Extra: Fetch categories
+                "categories": [category["name"] for category in place.get("categories", [])]  # 🔍 Extra: Fetch categories
             }
             for place in results
         ]
 
         return {"providers": providers}
 
-    except requests.exceptions.RequestException as req_err:
+    except httpx.HTTPStatusError as http_err:
+        raise HTTPException(status_code=response.status_code, detail=f"Foursquare API error: {str(http_err)}")
+    except httpx.RequestError as req_err:
         raise HTTPException(status_code=502, detail=f"External API request failed: {str(req_err)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
