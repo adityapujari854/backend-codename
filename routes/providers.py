@@ -1,42 +1,60 @@
-from fastapi import APIRouter, HTTPException, Query
 import os
 import requests
+from fastapi import APIRouter, HTTPException, Query
+from typing import Dict, Any, List
 
 # ✅ Load API Key from Environment Variables
 FOURSQUARE_API_KEY = os.getenv("FOURSQUARE_API_KEY")
-
 if not FOURSQUARE_API_KEY:
     raise ValueError("❌ FOURSQUARE_API_KEY is not set in the environment variables!")
 
 # ✅ Initialize Router
-providers_router = APIRouter()
+providers_router = APIRouter(prefix="/providers", tags=["Service Providers"])
+
+# ✅ Foursquare API Constants
+FOURSQUARE_API_URL = "https://api.foursquare.com/v3/places/search"
+HEADERS = {
+    "Authorization": FOURSQUARE_API_KEY,
+    "Accept": "application/json"
+}
 
 # ✅ Fetch service providers from Foursquare API
-@providers_router.get("/")
-def get_providers(service_name: str = Query(..., title="Service Name"), city: str = "Pune"):
-    """Fetch service providers for a given service name using the Foursquare API."""
-    
-    headers = {"Authorization": FOURSQUARE_API_KEY, "Accept": "application/json"}
-    params = {"query": service_name, "near": city, "limit": 10}
+@providers_router.get("/", summary="Get service providers from Foursquare")
+async def get_providers(
+    service_name: str = Query(..., title="Service Name", description="Type of service required"),
+    city: str = Query("Pune", title="City", description="City where the service is needed"),
+    limit: int = Query(10, title="Limit", description="Max number of results to return", le=20)
+) -> Dict[str, Any]:
+    """
+    Fetch service providers based on a given service name and city using the Foursquare API.
+    """
+
+    params = {"query": service_name, "near": city, "limit": limit}
 
     try:
-        response = requests.get("https://api.foursquare.com/v3/places/search", headers=headers, params=params)
+        response = requests.get(FOURSQUARE_API_URL, headers=HEADERS, params=params)
+        response.raise_for_status()  # Raise HTTP error if response is not 2xx
+
         data = response.json()
+        results = data.get("results", [])
 
-        if "results" not in data:
-            raise HTTPException(status_code=500, detail="Invalid response from Foursquare API")
+        if not results:
+            raise HTTPException(status_code=404, detail="No providers found for the given service.")
 
-        providers = [
+        providers: List[Dict[str, str]] = [
             {
-                "business_name": place["name"],
-                "address": place["location"].get("formatted_address", "Address not available"),
+                "business_name": place.get("name", "Unknown"),
+                "address": place.get("location", {}).get("formatted_address", "Address not available"),
                 "contact_number": place.get("tel", "Contact not available"),
-                "website": place.get("website", ""),
+                "website": place.get("website", "N/A"),
+                "categories": [category["name"] for category in place.get("categories", [])]  # Extra: Fetch categories
             }
-            for place in data.get("results", [])
+            for place in results
         ]
 
         return {"providers": providers}
 
+    except requests.exceptions.RequestException as req_err:
+        raise HTTPException(status_code=502, detail=f"External API request failed: {str(req_err)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching providers: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
