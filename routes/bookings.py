@@ -56,17 +56,20 @@ def send_booking_confirmation(booking: Booking):
 # ✅ Save a booking (Requires authentication)
 @bookings_router.post("/", summary="Create a new booking")
 def create_booking(booking: Booking, authorization: str = Header(None)):
-    user_email = get_current_user(authorization)
+    print("📥 Received Booking Request:", booking.dict())  # ✅ Debugging
+    print("🛂 Authorization Header:", authorization)       # ✅ Debugging
 
+    user_email = get_current_user(authorization)
+    
     if user_email != booking.email:
+        print("❌ Unauthorized Booking Attempt")  # ✅ Debugging
         raise HTTPException(status_code=403, detail="Unauthorized booking request")
 
-    # ✅ Store booking in the database
     bookings_collection.insert_one(booking.dict(by_alias=True, exclude_unset=True))
-    print(f"✅ Booking stored in DB for {booking.email}")
+    print("✅ Booking Successfully Stored in Database!")  # ✅ Debugging
 
-    # ✅ Send email confirmation
     send_booking_confirmation(booking)
+    print("📧 Email Sent to", booking.email)  # ✅ Debugging
 
     return {"message": "✅ Booking confirmed & email sent!"}
 
