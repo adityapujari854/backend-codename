@@ -70,14 +70,14 @@ def create_booking(booking: Booking, authorization: str = Header(None)):
 
     return {"message": "✅ Booking confirmed & email sent!"}
 
-# ✅ Fetch all bookings for a user (Requires authentication)
-@bookings_router.get("/", summary="Get all bookings for the logged-in user")
-def get_user_bookings(authorization: str = Header(None)):
-    user_email = get_current_user(authorization)
-    bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
+# # ✅ Fetch all bookings for a user (Requires authentication)
+# @bookings_router.get("/", summary="Get all bookings for the logged-in user")
+# def get_user_bookings(authorization: str = Header(None)):
+#     user_email = get_current_user(authorization)
+#     bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
 
-    if not bookings:
-        raise HTTPException(status_code=404, detail="⚠️ No bookings found!")
+#     if not bookings:
+#         raise HTTPException(status_code=404, detail="⚠️ No bookings found!")
 
-    print(f"✅ {len(bookings)} bookings found for {user_email}")
-    return {"bookings": bookings}
+#     print(f"✅ {len(bookings)} bookings found for {user_email}")
+#     return {"bookings": bookings}
