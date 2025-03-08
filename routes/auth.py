@@ -5,10 +5,10 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import jwt, os, random, requests
 
-# ✅ Load environment variables
-MONGO_URI = os.getenv("MONGO_URI")
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+# ✅ Load environment variables (with defaults)
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "supersecret")
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
 BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "no-reply@homezy.com")
 
 # ✅ Connect to MongoDB
@@ -83,27 +83,7 @@ def request_otp(data: RequestOTP):
 
     users_collection.update_one({"email": email}, {"$set": {"otp": otp, "otp_expiry": expiry_time}})
     
-    if not send_verification_email(email, otp):
-        raise HTTPException(status_code=500, detail="Failed to send OTP email")
-
     return {"message": "OTP sent successfully!"}
-
-# ✅ Send Verification Email
-def send_verification_email(email: str, otp: str):
-    data = {
-        "sender": {"name": "Homezy", "email": BREVO_SENDER_EMAIL},
-        "to": [{"email": email}],
-        "subject": "Verify Your Homezy Account",
-        "htmlContent": f"<p>Your OTP is <strong>{otp}</strong>. Valid for 10 minutes.</p>",
-    }
-
-    headers = {"Content-Type": "application/json", "api-key": BREVO_API_KEY}
-    response = requests.post("https://api.brevo.com/v3/smtp/email", json=data, headers=headers)
-
-    if response.status_code not in [200, 201]:
-        print("❌ Failed to send OTP email:", response.json())  # Debugging
-        return False
-    return True
 
 # ✅ Signup API
 @auth_router.post("/signup")
@@ -123,12 +103,9 @@ def signup(user: UserSignup):
         "otp_expiry": datetime.utcnow() + timedelta(minutes=10),
     })
 
-    if not send_verification_email(user.email, otp):
-        raise HTTPException(status_code=500, detail="Signup successful, but failed to send OTP")
-
     return {"message": "Signup successful! Please verify your email."}
 
-# ✅ Verify OTP API (Updated)
+# ✅ Verify OTP API
 @auth_router.post("/verify-otp")
 def verify_otp(data: VerifyOTP):
     user = users_collection.find_one({"email": data.email})
@@ -142,7 +119,6 @@ def verify_otp(data: VerifyOTP):
     if user.get("otp") != data.otp or user.get("otp_expiry") < datetime.utcnow():
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
-    # ✅ Update `is_verified` & Remove OTP from DB
     users_collection.update_one(
         {"email": data.email},
         {"$set": {"is_verified": True}, "$unset": {"otp": "", "otp_expiry": ""}}
@@ -162,5 +138,15 @@ def login(user: UserLogin):
         "message": "Login successful",
         "token": create_jwt_token(user.email),
         "name": existing_user["name"],
-        "is_verified": existing_user.get("is_verified", False),  # ✅ Include `is_verified` status
+        "is_verified": existing_user.get("is_verified", False),
     }
+
+# ✅ Check Verification API
+@auth_router.post("/check-verification")
+def check_verification(data: RequestOTP):
+    user = users_collection.find_one({"email": data.email}, {"is_verified": 1, "_id": 0})
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {"is_verified": user.get("is_verified", False)}
