@@ -14,12 +14,12 @@ providers_router = APIRouter(prefix="/providers", tags=["Service Providers"])
 # ✅ Foursquare API Constants
 FOURSQUARE_API_URL = "https://api.foursquare.com/v3/places/search"
 HEADERS = {
-    "Authorization": f"Bearer {FOURSQUARE_API_KEY}",  # 🔥 Corrected format
+    "Authorization": f"Bearer {FOURSQUARE_API_KEY}",
     "Accept": "application/json"
 }
 
 # ✅ Fetch service providers from Foursquare API
-@providers_router.get("/", summary="Get service providers from Foursquare")
+@providers_router.get("/", summary="Get service providers from Foursquare API")
 async def get_providers(
     service_name: str = Query(..., title="Service Name", description="Type of service required"),
     city: str = Query("Pune", title="City", description="City where the service is needed"),
@@ -42,13 +42,14 @@ async def get_providers(
         if not results:
             raise HTTPException(status_code=404, detail="⚠️ No providers found for the given service.")
 
+        # ✅ Process Foursquare data & structure it properly
         providers: List[Dict[str, str]] = [
             {
                 "business_name": place.get("name", "Unknown"),
                 "address": place.get("location", {}).get("formatted_address", "Address not available"),
                 "contact_number": place.get("tel", "Contact not available"),
                 "website": place.get("website", "N/A"),
-                "categories": [category["name"] for category in place.get("categories", [])]  # 🔍 Extra: Fetch categories
+                "categories": [category["name"] for category in place.get("categories", [])]  # 🔍 Fetch categories
             }
             for place in results
         ]
