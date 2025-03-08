@@ -14,12 +14,12 @@ providers_router = APIRouter(prefix="/api/providers", tags=["Service Providers"]
 # ✅ Foursquare API Constants
 FOURSQUARE_API_URL = "https://api.foursquare.com/v3/places/search"
 HEADERS = {
-    "Authorization": f"Bearer {FOURSQUARE_API_KEY}",
+    "Authorization": f"Bearer {FOURSQUARE_API_KEY}",  # 🔥 Fixed API Key Format
     "Accept": "application/json"
 }
 
 # ✅ Fetch service providers from Foursquare API
-@providers_router.get("/", summary="Get service providers from Foursquare API")
+@providers_router.get("/", summary="Get service providers from Foursquare")
 async def get_providers(
     service_name: str = Query(..., title="Service Name"),
     city: str = Query("Pune", title="City"),
@@ -29,13 +29,10 @@ async def get_providers(
     Fetch service providers based on a given service name and city using the Foursquare API.
     """
 
-    # ✅ Debugging logs
+    # ✅ Debugging logs to check input parameters
     print(f"🔍 Incoming Request - service_name={service_name}, city={city}")
 
-    # 🔥 FIX: Ensure service_name is formatted properly
-    formatted_service_name = service_name.replace(" ", "+")  # Ensure spaces are URL-encoded
-
-    params = {"query": formatted_service_name, "near": city, "limit": limit}
+    params = {"query": service_name, "near": city, "limit": limit}
 
     try:
         response = requests.get(FOURSQUARE_API_URL, headers=HEADERS, params=params)
