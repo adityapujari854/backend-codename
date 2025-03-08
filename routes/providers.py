@@ -1,5 +1,5 @@
 import os
-import httpx
+import requests
 from fastapi import APIRouter, HTTPException, Query
 from typing import Dict, Any, List
 
@@ -9,63 +9,60 @@ if not FOURSQUARE_API_KEY:
     raise ValueError("❌ ERROR: FOURSQUARE_API_KEY is not set in environment variables!")
 
 # ✅ Initialize Router
-providers_router = APIRouter(prefix="/api/providers", tags=["Providers"])  # 🔥 Fixed: Ensure Correct Prefix
+providers_router = APIRouter(prefix="/api/providers", tags=["Service Providers"])  # 🔥 Fixed Route Prefix
 
 # ✅ Foursquare API Constants
 FOURSQUARE_API_URL = "https://api.foursquare.com/v3/places/search"
 HEADERS = {
-    "Authorization": f"Bearer {FOURSQUARE_API_KEY}",
+    "Authorization": f"Bearer {FOURSQUARE_API_KEY}",  # 🔥 Fixed Authorization Format
     "Accept": "application/json"
 }
 
 # ✅ Fetch service providers from Foursquare API
-@providers_router.get("/", summary="Get service providers from Foursquare API")
+@providers_router.get("/", summary="Get service providers from Foursquare")
 async def get_providers(
-    service_name: str = Query(..., title="Service Name"),
-    city: str = Query("Pune", title="City"),
-    limit: int = Query(10, le=20)
+    service_name: str = Query(..., title="Service Name", description="Type of service required"),
+    city: str = Query("Pune", title="City", description="City where the service is needed"),
+    limit: int = Query(10, title="Limit", description="Max number of results to return", le=20)
 ) -> Dict[str, Any]:
     """
     Fetch service providers based on a given service name and city using the Foursquare API.
     """
 
-    # ✅ Debugging logs
-    print(f"🔍 Incoming Request - service_name={service_name}, city={city}")
+    # ✅ Debugging logs to check input parameters
+    print(f"🔍 API Request: service_name={service_name}, city={city}, limit={limit}")
 
     params = {"query": service_name, "near": city, "limit": limit}
 
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(FOURSQUARE_API_URL, headers=HEADERS, params=params)
-            response.raise_for_status()
-            data = response.json()
+        response = requests.get(FOURSQUARE_API_URL, headers=HEADERS, params=params)
+        response.raise_for_status()  # Raise HTTP error if response is not 2xx
 
-        print("✅ Foursquare API Response:", data)
-
+        data = response.json()
         results = data.get("results", [])
-        
+
         if not results:
             print("⚠️ No providers found in Foursquare API response.")
             raise HTTPException(status_code=404, detail="⚠️ No providers found for the given service.")
 
-        # ✅ Process Foursquare data
+        # ✅ Process Foursquare data & structure it properly
         providers: List[Dict[str, str]] = [
             {
                 "business_name": place.get("name", "Unknown"),
-                "address": place.get("location", {}).get("formatted_address", "Not available"),
-                "contact_number": place.get("tel", "N/A"),
+                "address": place.get("location", {}).get("formatted_address", "Address not available"),
+                "contact_number": place.get("tel", "Contact not available"),
                 "website": place.get("website", "N/A"),
-                "categories": [category["name"] for category in place.get("categories", [])]
+                "categories": [category["name"] for category in place.get("categories", [])]  # 🔍 Fetch categories
             }
             for place in results
         ]
 
-        print(f"✅ Providers Found: {len(providers)}")
+        print(f"✅ Providers Found: {len(providers)}")  # ✅ Debugging log
         return {"providers": providers}
 
-    except httpx.HTTPStatusError as http_err:
-        print(f"❌ API Error: {http_err}")
-        raise HTTPException(status_code=response.status_code, detail=f"API error: {str(http_err)}")
+    except requests.exceptions.RequestException as req_err:
+        print(f"❌ API Request Error: {req_err}")
+        raise HTTPException(status_code=502, detail=f"External API request failed: {str(req_err)}")
 
     except Exception as e:
         print(f"❌ Unexpected Error: {e}")
