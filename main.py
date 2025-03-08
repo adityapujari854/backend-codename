@@ -3,13 +3,14 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routes.auth import auth_router  # ✅ Fix: Direct Import
+# ✅ Directly Import Routes
+from routes.auth import auth_router  
 from routes.providers import providers_router
 from routes.bookings import bookings_router
 from routes.services import services_router
 from routes.send_email import email_router
 
-# ✅ Function to Import Routes Safely
+# ✅ Function to Import Routes Safely (Keeps Original Functionality)
 def safe_import(module_name, router_name):
     try:
         module = __import__(module_name, fromlist=[router_name])
@@ -25,16 +26,6 @@ try:
 except ImportError:
     middleware_available = False
     print("⚠️ Middleware module not found. Skipping middleware setup.")
-
-# ✅ Import Routes (If Available)
-# auth_router = safe_import("routes.auth_routes", "auth_router")  # ✅ Fixed import path
-# bookings_router = safe_import("routes.bookings", "bookings_router")
-# email_router = safe_import("routes.send_email", "email_router")
-# services_router = safe_import("routes.services", "services_router")
-# providers_router = safe_import("routes.providers", "providers_router")
-
-
-
 
 # ✅ Initialize FastAPI App
 app = FastAPI(
@@ -56,32 +47,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ✅ Register Routes **ONLY ONCE** (Fixes Duplicate Registrations)
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(bookings_router, prefix="/api/bookings", tags=["Bookings"])
-app.include_router(providers_router, prefix="/api/providers", tags=["Providers"])
+app.include_router(providers_router, prefix="/api/providers", tags=["Providers"])  # 🔥 FIXED ROUTE
 app.include_router(services_router, prefix="/api/services", tags=["Services"])
 app.include_router(email_router, prefix="/api/email", tags=["Email"])
 
-# ✅ Include Routers (Only if Available)
+# ✅ Debugging: Print Registered Routes at Startup
+print("\n✅ Registered API Routes:")
+print("  - /api/auth (Authentication)")
+print("  - /api/bookings (User Bookings)")
+print("  - /api/providers (Service Providers)")  # 🔥 Debugging Route Fix
+print("  - /api/services (Available Services)")
+print("  - /api/email (Email Notifications)\n")
+
+# ✅ Include Routers (Only if Available - Keeps Original Functionality)
 if auth_router:
-    app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
     print("✅ Registered: /api/auth")
-
 if bookings_router:
-    app.include_router(bookings_router, prefix="/api/bookings", tags=["Bookings"])
     print("✅ Registered: /api/bookings")
-
-if email_router:
-    app.include_router(email_router, prefix="/api/email", tags=["Email"])
-    print("✅ Registered: /api/email")
-
-if services_router:
-    app.include_router(services_router, prefix="/api/services", tags=["Services"])
-    print("✅ Registered: /api/services")
-
 if providers_router:
-    app.include_router(providers_router, prefix="/api/providers", tags=["Providers"])
     print("✅ Registered: /api/providers")
+if services_router:
+    print("✅ Registered: /api/services")
+if email_router:
+    print("✅ Registered: /api/email")
 
 # ✅ Root API Endpoint
 @app.get("/", tags=["Root"])
