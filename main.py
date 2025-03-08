@@ -3,6 +3,12 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from routes.auth import auth_router  # ✅ Fix: Direct Import
+from routes.providers import providers_router
+from routes.bookings import bookings_router
+from routes.services import services_router
+from routes.send_email import email_router
+
 # ✅ Function to Import Routes Safely
 def safe_import(module_name, router_name):
     try:
@@ -21,11 +27,14 @@ except ImportError:
     print("⚠️ Middleware module not found. Skipping middleware setup.")
 
 # ✅ Import Routes (If Available)
-auth_router = safe_import("routes.auth_routes", "auth_router")  # ✅ Fixed import path
-bookings_router = safe_import("routes.bookings", "bookings_router")
-email_router = safe_import("routes.send_email", "email_router")
-services_router = safe_import("routes.services", "services_router")
-providers_router = safe_import("routes.providers", "providers_router")
+# auth_router = safe_import("routes.auth_routes", "auth_router")  # ✅ Fixed import path
+# bookings_router = safe_import("routes.bookings", "bookings_router")
+# email_router = safe_import("routes.send_email", "email_router")
+# services_router = safe_import("routes.services", "services_router")
+# providers_router = safe_import("routes.providers", "providers_router")
+
+
+
 
 # ✅ Initialize FastAPI App
 app = FastAPI(
@@ -46,6 +55,12 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
+app.include_router(bookings_router, prefix="/api/bookings", tags=["Bookings"])
+app.include_router(providers_router, prefix="/api/providers", tags=["Providers"])
+app.include_router(services_router, prefix="/api/services", tags=["Services"])
+app.include_router(email_router, prefix="/api/email", tags=["Email"])
 
 # ✅ Include Routers (Only if Available)
 if auth_router:
