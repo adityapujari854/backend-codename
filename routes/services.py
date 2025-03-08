@@ -12,10 +12,16 @@ def get_services_collection() -> Collection:
 # ✅ Fetch All Services
 @services_router.get("/")
 async def get_all_services(collection: Collection = Depends(get_services_collection)):
-    services = list(collection.find({}, {"_id": 0}))
+    services = list(collection.find({}, {"_id": 1, "name": 1, "description": 1, "price": 1, "image": 1}))
+    
+    # Convert `_id` to a string (MongoDB ObjectId cannot be sent as JSON)
+    for service in services:
+        service["_id"] = str(service["_id"])
+    
     if not services:
         raise HTTPException(status_code=404, detail="No services found")
     return {"services": services}
+
 
 # ✅ Fetch Single Service by Name
 @services_router.get("/{service_name}")
