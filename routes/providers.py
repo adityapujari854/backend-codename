@@ -9,7 +9,7 @@ if not FOURSQUARE_API_KEY:
     raise ValueError("❌ ERROR: FOURSQUARE_API_KEY is not set in environment variables!")
 
 # ✅ Initialize Router
-providers_router = APIRouter(prefix="/api/providers", tags=["Service Providers"])  # 🔥 Fixed: Ensure Correct Prefix
+providers_router = APIRouter(prefix="/api/providers", tags=["Providers"])  # 🔥 Fixed: Ensure Correct Prefix
 
 # ✅ Foursquare API Constants
 FOURSQUARE_API_URL = "https://api.foursquare.com/v3/places/search"
