@@ -21,7 +21,7 @@ except ImportError:
     print("⚠️ Middleware module not found. Skipping middleware setup.")
 
 # ✅ Import Routes (If Available)
-auth_router = safe_import("auth", "auth_router")  # 🔹 Fixed: Now importing `auth.py` directly
+auth_router = safe_import("routes.auth_routes", "auth_router")  # ✅ Fixed import path
 bookings_router = safe_import("routes.bookings", "bookings_router")
 email_router = safe_import("routes.send_email", "email_router")
 services_router = safe_import("routes.services", "services_router")

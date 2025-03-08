@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import jwt, os, random, requests
 
 # ✅ Load environment variables (with defaults)
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+MONGO_URI = os.getenv("MONGO_URI")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "supersecret")
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
 BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "no-reply@homezy.com")
