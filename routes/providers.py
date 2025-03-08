@@ -29,6 +29,9 @@ async def get_providers(
     Fetch service providers based on a given service name and city using the Foursquare API.
     """
 
+    # ✅ Debugging logs to check input parameters
+    print(f"🔍 API Request: service_name={service_name}, city={city}, limit={limit}")
+
     params = {"query": service_name, "near": city, "limit": limit}
 
     try:
@@ -37,9 +40,12 @@ async def get_providers(
             response.raise_for_status()  # Raise HTTP error if response is not 2xx
             data = response.json()
 
-        results = data.get("results", [])
+        print("✅ Foursquare API Response:", data)  # ✅ Log Foursquare API Response
 
+        results = data.get("results", [])
+        
         if not results:
+            print("⚠️ No providers found in Foursquare API response.")
             raise HTTPException(status_code=404, detail="⚠️ No providers found for the given service.")
 
         # ✅ Process Foursquare data & structure it properly
@@ -54,11 +60,17 @@ async def get_providers(
             for place in results
         ]
 
+        print(f"✅ Providers Found: {len(providers)}")  # ✅ Debugging log
         return {"providers": providers}
 
     except httpx.HTTPStatusError as http_err:
+        print(f"❌ Foursquare API Error: {http_err}")
         raise HTTPException(status_code=response.status_code, detail=f"Foursquare API error: {str(http_err)}")
+
     except httpx.RequestError as req_err:
+        print(f"❌ Request Error: {req_err}")
         raise HTTPException(status_code=502, detail=f"External API request failed: {str(req_err)}")
+
     except Exception as e:
+        print(f"❌ Unexpected Error: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
