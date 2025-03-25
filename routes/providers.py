@@ -6,8 +6,9 @@ from typing import Dict, Any, List
 FOURSQUARE_API_KEY = "fsq3LYB6FD4cl0rKy+iRre2J6vX3OYbh/RT7ZBwx0wfb2C4="
 FOURSQUARE_API_URL = "https://api.foursquare.com/v3/places/search"
 
+# ✅ Headers with Correct Authorization Format
 HEADERS = {
-    "Authorization": f"{FOURSQUARE_API_KEY}",
+    "Authorization": f"Bearer {FOURSQUARE_API_KEY}",  # 🔥 Fixed Authorization format
     "Accept": "application/json"
 }
 
@@ -26,34 +27,34 @@ SERVICE_CATEGORIES = {
 }
 
 # ✅ Initialize Router
-providers_router = APIRouter(prefix="/api/providers", tags=["Service Providers"])
+providers_router = APIRouter(tags=["Service Providers"])
 
-# ✅ Fetch Service Providers from Foursquare
+# ✅ Fetch service providers from Foursquare API
 @providers_router.get("/", summary="Get service providers from Foursquare")
 async def get_providers(
-    service_name: str = Query(..., title="Service Name"),
-    limit: int = Query(5, le=20)  # Limit the number of providers
+    service_name: str = Query(..., title="Service Name", description="Name of the service to search"),
+    limit: int = Query(20, le=20, title="Limit", description="Number of providers to fetch (max: 20)")
 ) -> Dict[str, Any]:
     """
     Fetch service providers based on a given service name and city (Pune) using the Foursquare API.
     """
 
-    # ✅ Match the service name to Foursquare categories
+    # ✅ Debugging logs
+    print(f"🔍 Incoming Request - service_name={service_name}, limit={limit}")
+
+    # ✅ Map Service to Foursquare Category
     category_id = SERVICE_CATEGORIES.get(service_name)
-    
+
     if not category_id:
         raise HTTPException(status_code=400, detail=f"⚠️ Unknown service: {service_name}")
 
-    # ✅ Query Parameters for Foursquare
+    # ✅ Foursquare Query Parameters
     params = {
         "query": service_name,
-        "near": "Pune",
+        "near": "Pune",           # 🔥 Fixed to Pune city
         "limit": limit,
         "categories": category_id  # 🔥 Filter by Foursquare category ID
     }
-
-    # ✅ Debugging logs
-    print(f"🔍 Incoming Request - service_name={service_name}, category={category_id}, limit={limit}")
 
     try:
         # ✅ API Request
@@ -63,13 +64,14 @@ async def get_providers(
 
         print("✅ Foursquare API Response:", data)
 
+        # ✅ Extract Results
         results = data.get("results", [])
-        
+
         if not results:
             print("⚠️ No providers found in Foursquare API response.")
             raise HTTPException(status_code=404, detail="⚠️ No providers found for the given service.")
 
-        # ✅ Process and Return Foursquare Data
+        # ✅ Process and Format Foursquare Data
         providers: List[Dict[str, str]] = [
             {
                 "business_name": place.get("name", "Unknown"),
