@@ -33,20 +33,22 @@ SERVICE_KEYWORDS = {
 @providers_router.get("/", summary="Get service providers from Foursquare")
 async def get_providers(
     service_name: str = Query(..., title="Service Name", description="Name of the service to search"),
-    limit: int = Query(15, le=20, title="Limit", description="Number of providers to fetch (max: 20)")
+    limit: int = Query(10, le=20, title="Limit", description="Number of providers to display (max: 20)")
 ) -> Dict[str, Any]:
     """
     Fetch service providers based on a given service name and city (Pune) using the Foursquare API.
+    Ensures a minimum of 5-10 relevant providers are displayed.
     """
 
     # ✅ Debugging logs
     print(f"🔍 Incoming Request - service_name={service_name}, limit={limit}")
 
-    # ✅ Foursquare Query Parameters
+    # ✅ Foursquare Query Parameters (Fetch 30-50 initially to filter and meet the threshold)
+    fetch_limit = max(limit * 3, 30)  # Fetch 3x the limit to ensure filtering doesn't reduce providers
     params = {
         "query": service_name,
-        "near": "Pune",           # 🔥 Fixed to Pune city
-        "limit": limit
+        "near": "Pune",
+        "limit": fetch_limit
     }
 
     try:
@@ -64,34 +66,46 @@ async def get_providers(
             print("⚠️ No providers found in Foursquare API response.")
             raise HTTPException(status_code=404, detail="⚠️ No providers found for the given service.")
 
-        # ✅ Filter results to show only relevant services
+        # ✅ Filter Results Based on Service Keywords
         keywords = SERVICE_KEYWORDS.get(service_name, [])
         
-        filtered_providers: List[Dict[str, str]] = []
+        relevant_providers: List[Dict[str, str]] = []
+        fallback_providers: List[Dict[str, str]] = []
 
         for place in results:
             categories = [category["name"].lower() for category in place.get("categories", [])]
-            
-            # ✅ Only include providers matching relevant keywords
+
+            provider = {
+                "business_name": place.get("name", "Unknown"),
+                "address": place.get("location", {}).get("formatted_address", "Not available"),
+                "contact_number": place.get("tel", "N/A"),
+                "website": place.get("website", "N/A"),
+                "categories": categories,
+                "latitude": str(place.get("geocodes", {}).get("main", {}).get("latitude", "N/A")),
+                "longitude": str(place.get("geocodes", {}).get("main", {}).get("longitude", "N/A")),
+                "rating": place.get("rating", "N/A"),
+                "price": place.get("price", {}).get("tier", "N/A")
+            }
+
+            # ✅ Classify Providers: Relevant vs Fallback
             if any(keyword in " ".join(categories) for keyword in keywords):
-                filtered_providers.append({
-                    "business_name": place.get("name", "Unknown"),
-                    "address": place.get("location", {}).get("formatted_address", "Not available"),
-                    "contact_number": place.get("tel", "N/A"),
-                    "website": place.get("website", "N/A"),
-                    "categories": categories,
-                    "latitude": str(place.get("geocodes", {}).get("main", {}).get("latitude", "N/A")),
-                    "longitude": str(place.get("geocodes", {}).get("main", {}).get("longitude", "N/A")),
-                    "rating": place.get("rating", "N/A"),
-                    "price": place.get("price", {}).get("tier", "N/A")
-                })
+                relevant_providers.append(provider)
+            else:
+                fallback_providers.append(provider)
 
-        if not filtered_providers:
-            print("⚠️ No relevant providers found after filtering.")
-            raise HTTPException(status_code=404, detail="⚠️ No relevant providers found for the given service.")
+        # ✅ Ensure Minimum of 5-10 Providers
+        final_providers = relevant_providers[:limit]
 
-        print(f"✅ Providers Found: {len(filtered_providers)}")
-        return {"providers": filtered_providers}
+        # 🔥 Add Fallback Providers if less than 5 relevant ones
+        if len(final_providers) < 5:
+            needed = 5 - len(final_providers)
+            final_providers.extend(fallback_providers[:needed])
+
+        # ✅ Ensure 5-10 Providers are Displayed
+        final_providers = final_providers[:max(5, min(limit, 10))]
+
+        print(f"✅ Providers Found: {len(final_providers)}")
+        return {"providers": final_providers}
 
     except requests.exceptions.RequestException as req_err:
         print(f"❌ API Request Error: {req_err}")
