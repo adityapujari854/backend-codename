@@ -2,7 +2,7 @@ import requests
 from fastapi import APIRouter, HTTPException, Query
 from typing import Dict, Any, List
 
-# ✅ Foursquare API Constants
+# ✅ Foursquare API Constants (Directly Using Key)
 FOURSQUARE_API_KEY = "fsq3LYB6FD4cl0rKy+iRre2J6vX3OYbh/RT7ZBwx0wfb2C4="
 FOURSQUARE_API_URL = "https://api.foursquare.com/v3/places/search"
 
