@@ -42,9 +42,9 @@ if middleware_available:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://your-vercel-app.vercel.app",                 # ✅ Vercel frontend
+        "https://your-vercel-app.vercel.app",      # ✅ Vercel frontend
         "https://backend-codename-production.up.railway.app"  # ✅ Backend URL
-    ]
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
