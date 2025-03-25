@@ -19,7 +19,7 @@ providers_router = APIRouter(tags=["Service Providers"])
 @providers_router.get("/", summary="Get service providers from Foursquare")
 async def get_providers(
     service_name: str = Query(..., title="Service Name", description="Name of the service to search"),
-    limit: int = Query(5, le=20, title="Limit", description="Number of providers to fetch (max: 20)")
+    limit: int = Query(20, le=20, title="Limit", description="Number of providers to fetch (max: 20)")
 ) -> Dict[str, Any]:
     """
     Fetch service providers based on a given service name and city (Pune) using the Foursquare API.
