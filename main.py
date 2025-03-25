@@ -41,12 +41,10 @@ if middleware_available:
 # ✅ Enable CORS (Security: Change `allow_origins` in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://backend-codename-production.up.railway.app/api/services",
-                   "https://codename2025.vercel.app"
-    ],
+    allow_origins=["*"],  # ✅ Allow all origins (for testing only, restrict in production)
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_methods=["*"],   # ✅ Allow all methods (GET, POST, DELETE, etc.)
+    allow_headers=["*"],   # ✅ Allow all headers
 )
 
 # ✅ Register Routes **ONLY ONCE** (Fixes Duplicate Registrations)
