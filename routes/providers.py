@@ -8,7 +8,7 @@ FOURSQUARE_API_URL = "https://api.foursquare.com/v3/places/search"
 
 # ✅ Headers with Correct Authorization Format
 HEADERS = {
-    "Authorization": f"Bearer {FOURSQUARE_API_KEY}",  # 🔥 Fixed Authorization format
+    "Authorization": FOURSQUARE_API_KEY,  # 🔥 Fixed Authorization format
     "Accept": "application/json"
 }
 
