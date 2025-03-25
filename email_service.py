@@ -1,19 +1,53 @@
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from dotenv import load_dotenv
 import os
-import requests
+import logging
+import time
 
-BREVO_API_KEY = os.getenv("BREVO_API_KEY")
-SENDER_EMAIL = os.getenv("SENDER_EMAIL")
+# ✅ Load environment variables
+load_dotenv()
 
-def send_email(to_email: str, subject: str, message: str):
-    email_data = {
-        "sender": {"name": "Homezy", "email": SENDER_EMAIL},
-        "to": [{"email": to_email}],
-        "subject": subject,
-        "htmlContent": f"<p>{message}</p>"
-    }
+# ✅ Email Config
+SMTP_SERVER = os.getenv("SMTP_SERVER")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+RETRIES = 3
+RETRY_DELAY = 5  # seconds
 
-    headers = {"accept": "application/json", "content-type": "application/json", "api-key": BREVO_API_KEY}
-    response = requests.post("https://api.brevo.com/v3/smtp/email", json=email_data, headers=headers)
+# ✅ Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    if response.status_code != 201:
-        raise Exception("Failed to send email")
+def send_email(to_email, subject, message):
+    """Send email with retries and error handling."""
+    for attempt in range(RETRIES):
+        try:
+            # ✅ Set up the email
+            msg = MIMEMultipart()
+            msg['From'] = SMTP_USERNAME
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            msg.attach(MIMEText(message, 'plain'))
+
+            # ✅ Connect to the SMTP server
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.sendmail(SMTP_USERNAME, to_email, msg.as_string())
+
+            logger.info(f"✅ Email sent successfully to {to_email}")
+            return True
+
+        except smtplib.SMTPException as e:
+            logger.error(f"❌ Error sending email: {e}. Attempt {attempt + 1} of {RETRIES}")
+            time.sleep(RETRY_DELAY)
+
+        except Exception as e:
+            logger.error(f"❌ Unexpected error: {e}")
+            return False
+
+    logger.error(f"❌ Failed to send email after {RETRIES} attempts")
+    return False

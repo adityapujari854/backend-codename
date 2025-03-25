@@ -1,33 +1,42 @@
-import requests
+from pymongo import MongoClient, errors
+from dotenv import load_dotenv
 import os
-from fastapi import HTTPException
+import logging
+import time
 
-BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+# ✅ Load environment variables
+load_dotenv()
 
-def send_verification_email(email: str, otp: str):
-    """Sends an OTP email using Brevo API for email verification."""
-    
-    email_data = {
-        "sender": {"name": "Homezy Services", "email": "no-reply@homezy.com"},
-        "to": [{"email": email}],
-        "subject": "Verify Your Email - Homezy",
-        "htmlContent": f"""
-            <h2>Email Verification</h2>
-            <p>Hello,</p>
-            <p>Your OTP for verifying your email is <strong>{otp}</strong>.</p>
-            <p>Please enter this OTP in the verification form to activate your account.</p>
-            <p>If you didn't request this, please ignore this email.</p>
-            <p>Thank you for choosing Homezy!</p>
-        """
-    }
+# ✅ MongoDB Config
+MONGO_URI = os.getenv("MONGO_URI")
+DB_NAME = os.getenv("homezy_db")
+RETRIES = 3
+RETRY_DELAY = 5  # seconds
 
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "api-key": BREVO_API_KEY
-    }
+# ✅ Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    response = requests.post("https://api.brevo.com/v3/smtp/email", json=email_data, headers=headers)
+def get_db():
+    """Establish MongoDB connection with retry logic."""
+    for attempt in range(RETRIES):
+        try:
+            logger.info(f"🔗 Connecting to MongoDB (Attempt {attempt + 1}/{RETRIES})...")
+            client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+            
+            # ✅ Check if the connection is successful
+            client.server_info()  
+            logger.info("✅ MongoDB connection established successfully")
+            
+            return client[DB_NAME]
 
-    if response.status_code != 201:
-        raise HTTPException(status_code=500, detail="Failed to send verification email")
+        except errors.ServerSelectionTimeoutError as e:
+            logger.error(f"❌ MongoDB connection timeout: {e}")
+            time.sleep(RETRY_DELAY)
+
+        except Exception as e:
+            logger.error(f"❌ Unexpected MongoDB connection error: {e}")
+            time.sleep(RETRY_DELAY)
+
+    logger.error("❌ Failed to connect to MongoDB after retries")
+    return None
