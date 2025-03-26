@@ -32,10 +32,7 @@ if middleware_available:
 # ✅ Enable CORS (Security: Change `allow_origins` in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://codename2025.vercel.app",  # ✅ Use Vercel URL
-        "https://backend-codename-production.up.railway.app"
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],   # ✅ Allow all methods (GET, POST, DELETE, etc.)
     allow_headers=["*"],   # ✅ Allow all headers
