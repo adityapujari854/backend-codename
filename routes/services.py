@@ -57,7 +57,7 @@ async def get_all_categories(collection: Collection = Depends(get_services_colle
 
     return {"categories": sorted(unique_categories)}
 
-# ✅ Fetch All Services with Pagination (Main Fix)
+# ✅ Fetch All Services with Pagination (Fixed)
 @services_router.get("/")
 async def get_all_services(
     collection: Collection = Depends(get_services_collection),
@@ -65,17 +65,26 @@ async def get_all_services(
     page_size: int = Query(10, ge=1, le=100)
 ):
     skip = (page - 1) * page_size
+    
+    # ✅ Fetch total count
+    total_services = collection.count_documents({})
+    
+    # ✅ Apply pagination
     services_cursor = collection.find({}, {"_id": 1, "name": 1, "description": 1, "image": 1, "categories": 1})
-
-    services = [convert_mongo_document(service) for service in services_cursor]
-
+    services = [convert_mongo_document(service) for service in services_cursor.skip(skip).limit(page_size)]
+    
     if not services:
         logger.warning("❌ No services found in MongoDB")
         raise HTTPException(status_code=404, detail="No services found")
 
     logger.info(f"✅ {len(services)} services retrieved from MongoDB")
     
-    return {"total": len(services), "services": services}
+    return {
+        "total": total_services,
+        "page": page,
+        "page_size": page_size,
+        "services": services
+    }
 
 # ✅ Fetch Single Service by Name
 @services_router.get("/{service_name}")
@@ -96,7 +105,7 @@ async def get_service(service_name: str, collection: Collection = Depends(get_se
 
     return {"service": service}
 
-# ✅ Add a New Service
+# ✅ Add a New Service (Fixed `_id`)
 @services_router.post("/add")
 async def add_service(service_data: dict, collection: Collection = Depends(get_services_collection)):
     required_fields = ["name", "description", "image"]
@@ -112,11 +121,13 @@ async def add_service(service_data: dict, collection: Collection = Depends(get_s
     if existing_service:
         raise HTTPException(status_code=400, detail="Service already exists")
 
-    service_data["_id"] = ObjectId()  # Store as ObjectId in MongoDB
+    # ✅ Convert `_id` to string before inserting
+    service_data["_id"] = str(ObjectId())  
     collection.insert_one(service_data)
+    
     logger.info("✅ Service added: %s", service_data)
 
-    return {"message": "Service added successfully", "service": convert_mongo_document(service_data)}
+    return {"message": "Service added successfully", "service": service_data}
 
 # ✅ Delete a Service
 @services_router.delete("/{service_name}")
