@@ -77,14 +77,14 @@ async def get_providers(
 
             provider = {
                 "business_name": place.get("name", "Unknown"),
-                "address": place.get("location", {}).get("formatted_address", "Not available"),
-                "contact_number": place.get("tel", "N/A"),
-                "website": place.get("website", "N/A"),
-                "categories": categories,
-                "latitude": str(place.get("geocodes", {}).get("main", {}).get("latitude", "N/A")),
-                "longitude": str(place.get("geocodes", {}).get("main", {}).get("longitude", "N/A")),
-                "rating": place.get("rating", "N/A"),
-                "price": place.get("price", {}).get("tier", "N/A")
+                    "address": place.get("location", {}).get("formatted_address", "Not available"),
+                    "contact_number": place.get("tel", "N/A"),
+                    "website": place.get("website", "N/A"),
+                    "category": categories[0] if categories else "General",  # ✅ Assign first category
+                    "latitude": str(place.get("geocodes", {}).get("main", {}).get("latitude", "N/A")),
+                    "longitude": str(place.get("geocodes", {}).get("main", {}).get("longitude", "N/A")),
+                    "rating": place.get("rating", "N/A"),
+                    "price": place.get("price", {}).get("tier", "N/A")
             }
 
             # ✅ Classify Providers: Relevant vs Fallback
