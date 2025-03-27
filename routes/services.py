@@ -36,6 +36,37 @@ def fetch_price_from_foursquare(service_name: str):
 
     return None
 
+# ✅ Fetch Providers from Foursquare API
+def fetch_providers_from_foursquare(category_name: str):
+    headers = {"Authorization": FOURSQUARE_API_KEY}
+    params = {
+        "query": category_name,
+        "near": "Mumbai",  # Change this to dynamically fetch the user’s location
+        "limit": 5
+    }
+
+    try:
+        response = requests.get(FOURSQUARE_API_URL, headers=headers, params=params, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+
+        providers = []
+        for place in data.get("results", []):
+            providers.append({
+                "business_name": place.get("name", "Unknown"),
+                "address": place.get("location", {}).get("formatted_address", "Address not available"),
+                "contact_number": place.get("contact", {}).get("phone", "N/A"),
+                "website": place.get("website", "N/A"),
+                "price": place.get("price", "N/A"),
+                "rating": place.get("rating", "No rating"),
+            })
+
+        return providers
+
+    except requests.RequestException as e:
+        logger.error(f"❌ Error fetching providers for {category_name}: {e}")
+        return []
+
 # ✅ Convert MongoDB Documents
 def convert_mongo_document(doc):
     """Convert MongoDB `_id` from ObjectId to string."""
@@ -56,6 +87,28 @@ async def get_all_categories(collection: Collection = Depends(get_services_colle
         unique_categories.update(service.get("categories", []))
 
     return {"categories": sorted(unique_categories)}
+
+# ✅ Fetch Categories with Providers for a Service
+@services_router.get("/categories/{service_id}", tags=["Categories"])
+async def get_categories_with_providers(service_id: str, collection: Collection = Depends(get_services_collection)):
+    # ✅ Fetch service details
+    service = collection.find_one({"_id": ObjectId(service_id)}, {"categories": 1})
+
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    categories = service.get("categories", [])
+
+    # ✅ Fetch providers for each category
+    categories_with_providers = [
+        {
+            "name": category,
+            "providers": fetch_providers_from_foursquare(category)
+        }
+        for category in categories
+    ]
+
+    return {"categories": categories_with_providers}
 
 # ✅ Fetch All Services with Pagination (Fixed)
 @services_router.get("/")
