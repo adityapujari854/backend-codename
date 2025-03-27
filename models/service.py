@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional
+
 
 class Service(BaseModel):
     """Schema for a service in the Homezy platform."""
@@ -8,17 +9,17 @@ class Service(BaseModel):
     description: str = Field(..., title="Service Description", description="Short description of the service")
     image: str = Field(..., title="Service Image URL", description="URL of the service image")
     price: Optional[float] = Field(None, title="Service Price", description="Base price for the service")
-    categories: Optional[List[str]] = Field(None, title="Service Categories", description="List of subcategories under this service (e.g., Fan, Wiring, Doorbell)")
+    category: Optional[str] = Field(None, title="Service Category", description="Category of the service (e.g., Plumbing, Electrical)")
     available: bool = Field(True, title="Availability", description="Indicates if the service is currently available")
 
     class Config:
         schema_extra = {
             "example": {
-                "name": "Electrical",
-                "description": "Professional electrical services for your home.",
-                "image": "https://example.com/images/electrical.jpg",
-                "price": 1000.0,
-                "categories": ["Fan Installation", "Wiring Repair", "Doorbell Fix"],
+                "name": "Plumbing",
+                "description": "Expert plumbing services for your home.",
+                "image": "https://example.com/images/plumbing.jpg",
+                "price": 500.0,
+                "category": "Home Repair",
                 "available": True,
             }
         }

@@ -1,15 +1,16 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pymongo.collection import Collection
 from database import services_collection
-from bson import ObjectId  # ✅ For handling MongoDB `_id`
+from bson import ObjectId
 import logging
-import requests  # ✅ Import Requests for API calls
+import requests
 
 # ✅ Initialize Router
 services_router = APIRouter()
 
 # ✅ Initialize Logger
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ✅ Dependency to Get Services Collection
 def get_services_collection() -> Collection:
@@ -24,65 +25,64 @@ def fetch_price_from_foursquare(service_name: str):
     headers = {"Authorization": FOURSQUARE_API_KEY}
     params = {"query": service_name, "limit": 1}
 
-    response = requests.get(FOURSQUARE_API_URL, headers=headers, params=params)
-
-    if response.status_code == 200:
+    try:
+        response = requests.get(FOURSQUARE_API_URL, headers=headers, params=params, timeout=5)
+        response.raise_for_status()
         data = response.json()
-        if "results" in data and len(data["results"]) > 0:
-            return data["results"][0].get("price", None)  # Get price if available
-    return None  # Return None if price not found
+        if data.get("results"):
+            return data["results"][0].get("price")
+    except requests.RequestException as e:
+        logger.error(f"❌ Foursquare API error: {e}")
 
-# ✅ Helper Function to Convert MongoDB Documents
+    return None
+
+# ✅ Convert MongoDB Documents
 def convert_mongo_document(doc):
-    """Converts MongoDB `_id` from ObjectId format to a string for JSON response."""
-    if "_id" in doc:
-        if isinstance(doc["_id"], ObjectId):
-            doc["_id"] = str(doc["_id"])  # Convert ObjectId to string
-        elif isinstance(doc["_id"], dict) and "$oid" in doc["_id"]:
-            doc["_id"] = doc["_id"]["$oid"]  # Handle `$oid` format
-
-    # ✅ Ensure categories exist
-    if "categories" not in doc:
-        doc["categories"] = []
-
+    """Convert MongoDB `_id` from ObjectId to string."""
+    doc["_id"] = str(doc["_id"]) if "_id" in doc else None
+    doc.setdefault("categories", [])
     return doc
 
-# ✅ Fetch All Services with Pagination
+# ✅ Fetch Unique Categories
+@services_router.get("/categories", tags=["Categories"])
+async def get_all_categories(collection: Collection = Depends(get_services_collection)):
+    services = list(collection.find({}, {"categories": 1}))
+
+    if not services:
+        raise HTTPException(status_code=404, detail="No categories found")
+
+    unique_categories = set()
+    for service in services:
+        unique_categories.update(service.get("categories", []))
+
+    return {"categories": sorted(unique_categories)}
+
+# ✅ Fetch All Services with Pagination (Main Fix)
 @services_router.get("/")
 async def get_all_services(
     collection: Collection = Depends(get_services_collection),
-    page: int = Query(1, alias="page", ge=1),  # ✅ Pagination
-    page_size: int = Query(10, alias="page_size", ge=1, le=100)
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100)
 ):
     skip = (page - 1) * page_size
-    services = list(collection.find({}, {"_id": 1, "name": 1, "description": 1, "price": 1, "image": 1, "categories": 1})
-                     .skip(skip)
-                     .limit(page_size))
+    services_cursor = collection.find({}, {"_id": 1, "name": 1, "description": 1, "image": 1, "categories": 1})
+
+    services = [convert_mongo_document(service) for service in services_cursor]
 
     if not services:
+        logger.warning("❌ No services found in MongoDB")
         raise HTTPException(status_code=404, detail="No services found")
 
-    # ✅ Convert MongoDB documents & Fetch Price from Foursquare API
-    services = [convert_mongo_document(service) for service in services]
+    logger.info(f"✅ {len(services)} services retrieved from MongoDB")
+    
+    return {"total": len(services), "services": services}
 
-    for service in services:
-        foursquare_price = fetch_price_from_foursquare(service["name"])
-        if foursquare_price:
-            service["price"] = foursquare_price  # ✅ Update price from Foursquare API
-
-    return {
-        "page": page,
-        "page_size": page_size,
-        "total_services": collection.count_documents({}),
-        "services": services
-    }
-
-# ✅ Fetch Single Service by Name (Case-Insensitive)
+# ✅ Fetch Single Service by Name
 @services_router.get("/{service_name}")
 async def get_service(service_name: str, collection: Collection = Depends(get_services_collection)):
     service = collection.find_one(
         {"name": {"$regex": f"^{service_name}$", "$options": "i"}},
-        {"_id": 1, "name": 1, "description": 1, "price": 1, "image": 1, "categories": 1}
+        {"_id": 1, "name": 1, "description": 1, "image": 1, "categories": 1}
     )
 
     if not service:
@@ -90,48 +90,35 @@ async def get_service(service_name: str, collection: Collection = Depends(get_se
 
     service = convert_mongo_document(service)
 
-    # ✅ Fetch price from Foursquare API
-    foursquare_price = fetch_price_from_foursquare(service_name)
-    if foursquare_price:
-        service["price"] = foursquare_price  # ✅ Update price dynamically
+    # ✅ Fetch price only if missing
+    if not service.get("price"):
+        service["price"] = fetch_price_from_foursquare(service_name)
 
     return {"service": service}
 
-# ✅ Add a New Service (With Categories)
+# ✅ Add a New Service
 @services_router.post("/add")
 async def add_service(service_data: dict, collection: Collection = Depends(get_services_collection)):
-    required_fields = ["name", "description", "price", "image"]
+    required_fields = ["name", "description", "image"]
 
-    # ✅ Validate required fields
     for field in required_fields:
         if field not in service_data or not service_data[field]:
             raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
 
-    # ✅ Ensure `price` is a number
-    if not isinstance(service_data["price"], (int, float)):
-        raise HTTPException(status_code=400, detail="Price must be a number")
-
-    # ✅ Ensure `categories` is a list (if provided)
     if "categories" in service_data and not isinstance(service_data["categories"], list):
         raise HTTPException(status_code=400, detail="Categories must be a list of strings")
 
-    # ✅ Check if service already exists (Case-Insensitive)
     existing_service = collection.find_one({"name": {"$regex": f"^{service_data['name']}$", "$options": "i"}})
-
     if existing_service:
         raise HTTPException(status_code=400, detail="Service already exists")
 
-    # ✅ Set MongoDB `_id`
-    service_data["_id"] = str(ObjectId())
-
-    # ✅ Insert into MongoDB
+    service_data["_id"] = ObjectId()  # Store as ObjectId in MongoDB
     collection.insert_one(service_data)
-    
-    logging.info("✅ Service added: %s", service_data)
-    
-    return {"message": "Service added successfully", "service": service_data}
+    logger.info("✅ Service added: %s", service_data)
 
-# ✅ Delete a Service (Case-Insensitive)
+    return {"message": "Service added successfully", "service": convert_mongo_document(service_data)}
+
+# ✅ Delete a Service
 @services_router.delete("/{service_name}")
 async def delete_service(service_name: str, collection: Collection = Depends(get_services_collection)):
     result = collection.delete_one({"name": {"$regex": f"^{service_name}$", "$options": "i"}})
@@ -141,7 +128,7 @@ async def delete_service(service_name: str, collection: Collection = Depends(get
 
     return {"message": "Service deleted successfully"}
 
-# ✅ Health Check Route
+# ✅ Health Check
 @services_router.get("/health")
 async def health_check():
     return {"status": "ok", "message": "Service is running!"}
