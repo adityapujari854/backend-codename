@@ -24,25 +24,15 @@ def convert_mongo_document(doc):
             doc["_id"] = doc["_id"]["$oid"]  # Handle `$oid` format
     return doc
 
-# ✅ Fetch All Services with Pagination and Category Filter
+# ✅ Fetch All Services with Pagination
 @services_router.get("/")
 async def get_all_services(
     collection: Collection = Depends(get_services_collection),
     page: int = Query(1, alias="page", ge=1),          # ✅ Pagination
-    page_size: int = Query(10, alias="page_size", ge=1, le=100),
-    category: str = Query(None, alias="category")       # ✅ Category filter
+    page_size: int = Query(10, alias="page_size", ge=1, le=100)
 ):
-    """
-    Fetch all services with pagination and optional category filtering.
-    """
     skip = (page - 1) * page_size
-
-    # ✅ Apply category filter if provided
-    query = {}
-    if category:
-        query["category"] = {"$regex": f"^{category}$", "$options": "i"}
-
-    services = list(collection.find(query)
+    services = list(collection.find({}, {"_id": 1, "name": 1, "description": 1, "price": 1, "image": 1})
                      .skip(skip)
                      .limit(page_size))
 
@@ -54,28 +44,17 @@ async def get_all_services(
     return {
         "page": page,
         "page_size": page_size,
-        "total_services": collection.count_documents(query),
+        "total_services": collection.count_documents({}),
         "services": services
     }
 
-# ✅ Fetch Single Service by Name with Category
+# ✅ Fetch Single Service by Name (Case-Insensitive)
 @services_router.get("/{service_name}")
-async def get_service(
-    service_name: str, 
-    collection: Collection = Depends(get_services_collection),
-    category: str = Query(None, alias="category")
-):
-    """
-    Fetch a single service by name, optionally filtered by category.
-    """
-    query = {
-        "name": {"$regex": f"^{service_name}$", "$options": "i"}
-    }
-
-    if category:
-        query["category"] = {"$regex": f"^{category}$", "$options": "i"}
-
-    service = collection.find_one(query)
+async def get_service(service_name: str, collection: Collection = Depends(get_services_collection)):
+    service = collection.find_one(
+        {"name": {"$regex": f"^{service_name}$", "$options": "i"}},
+        {"_id": 1, "name": 1, "description": 1, "price": 1, "image": 1}
+    )
 
     if not service:
         raise HTTPException(status_code=404, detail=f"Service '{service_name}' not found")
@@ -83,13 +62,10 @@ async def get_service(
     service = convert_mongo_document(service)
     return {"service": service}
 
-# ✅ Add a New Service (With Validation and Category Support)
+# ✅ Add a New Service (With Validation)
 @services_router.post("/add")
 async def add_service(service_data: dict, collection: Collection = Depends(get_services_collection)):
-    """
-    Add a new service with validation and category support.
-    """
-    required_fields = ["name", "description", "price", "image", "category"]
+    required_fields = ["name", "description", "price", "image"]
 
     # ✅ Validate required fields
     for field in required_fields:
@@ -101,9 +77,7 @@ async def add_service(service_data: dict, collection: Collection = Depends(get_s
         raise HTTPException(status_code=400, detail="Price must be a number")
 
     # ✅ Check if service already exists (Case-Insensitive)
-    existing_service = collection.find_one({
-        "name": {"$regex": f"^{service_data['name']}$", "$options": "i"}
-    })
+    existing_service = collection.find_one({"name": {"$regex": f"^{service_data['name']}$", "$options": "i"}})
 
     if existing_service:
         raise HTTPException(status_code=400, detail="Service already exists")
@@ -118,38 +92,10 @@ async def add_service(service_data: dict, collection: Collection = Depends(get_s
     
     return {"message": "Service added successfully", "service": service_data}
 
-# ✅ Update a Service (With Category)
-@services_router.put("/{service_name}")
-async def update_service(
-    service_name: str, 
-    service_data: dict, 
-    collection: Collection = Depends(get_services_collection)
-):
-    """
-    Update an existing service by name with category support.
-    """
-    query = {"name": {"$regex": f"^{service_name}$", "$options": "i"}}
-    existing_service = collection.find_one(query)
-
-    if not existing_service:
-        raise HTTPException(status_code=404, detail=f"Service '{service_name}' not found")
-
-    collection.update_one(query, {"$set": service_data})
-
-    return {"message": "Service updated successfully"}
-
 # ✅ Delete a Service (Case-Insensitive)
 @services_router.delete("/{service_name}")
-async def delete_service(
-    service_name: str, 
-    collection: Collection = Depends(get_services_collection)
-):
-    """
-    Delete a service by name.
-    """
-    result = collection.delete_one({
-        "name": {"$regex": f"^{service_name}$", "$options": "i"}
-    })
+async def delete_service(service_name: str, collection: Collection = Depends(get_services_collection)):
+    result = collection.delete_one({"name": {"$regex": f"^{service_name}$", "$options": "i"}})
 
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail=f"Service '{service_name}' not found")
@@ -159,7 +105,4 @@ async def delete_service(
 # ✅ Health Check Route
 @services_router.get("/health")
 async def health_check():
-    """
-    Health check route to verify the service is running.
-    """
     return {"status": "ok", "message": "Service is running!"}

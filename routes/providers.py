@@ -1,13 +1,12 @@
 import requests
 from fastapi import APIRouter, HTTPException, Query
 from typing import Dict, Any, List
-from database import providers_collection  # MongoDB collection
 
-# ✅ Foursquare API Constants
+# ✅ Foursquare API Constants (Directly Using Key)
 FOURSQUARE_API_KEY = "fsq3LYB6FD4cl0rKy+iRre2J6vX3OYbh/RT7ZBwx0wfb2C4="
 FOURSQUARE_API_URL = "https://api.foursquare.com/v3/places/search"
 
-# ✅ Headers with Authorization
+# ✅ Headers with Correct Authorization Format
 HEADERS = {
     "Authorization": FOURSQUARE_API_KEY,
     "Accept": "application/json"
@@ -16,7 +15,7 @@ HEADERS = {
 # ✅ Initialize Router
 providers_router = APIRouter(tags=["Service Providers"])
 
-# ✅ Mapped Services
+# ✅ Mapped Services to Filter Irrelevant Results
 SERVICE_KEYWORDS = {
     "Plumbing Service": ["plumbing", "pipe repair", "leak", "faucet", "drain"],
     "Electrical Repair": ["electrician", "circuit repair", "wiring", "fuse"],
@@ -30,70 +29,88 @@ SERVICE_KEYWORDS = {
     "CCTV Installation": ["cctv", "camera", "security system", "surveillance"]
 }
 
-# ✅ Fetch providers with Foursquare and MongoDB fallback
-@providers_router.get("/", summary="Get service providers with categories")
+# ✅ Fetch service providers from Foursquare API
+@providers_router.get("/", summary="Get service providers from Foursquare")
 async def get_providers(
-    service_name: str = Query(..., title="Service Name"),
-    limit: int = Query(10, le=20, title="Limit")
+    service_name: str = Query(..., title="Service Name", description="Name of the service to search"),
+    limit: int = Query(10, le=20, title="Limit", description="Number of providers to display (max: 20)")
 ) -> Dict[str, Any]:
     """
-    Fetch service providers with categories from Foursquare and MongoDB fallback.
+    Fetch service providers based on a given service name and city (Pune) using the Foursquare API.
+    Ensures a minimum of 5-10 relevant providers are displayed.
     """
-    print(f"🔍 Fetching providers for: {service_name} (Limit: {limit})")
 
-    # ✅ MongoDB fallback
-    cached_providers = list(providers_collection.find(
-        {"service_name": service_name}
-    ).limit(limit))
+    # ✅ Debugging logs
+    print(f"🔍 Incoming Request - service_name={service_name}, limit={limit}")
 
-    if cached_providers:
-        print("✅ Using MongoDB providers")
-        return {"providers": cached_providers}
-
-    # ✅ Foursquare Query Parameters
+    # ✅ Foursquare Query Parameters (Fetch 30-50 initially to filter and meet the threshold)
+    fetch_limit = max(limit * 3, 30)  # Fetch 3x the limit to ensure filtering doesn't reduce providers
     params = {
         "query": service_name,
         "near": "Pune",
-        "limit": limit
+        "limit": fetch_limit
     }
 
     try:
-        # ✅ Foursquare API Request
+        # ✅ API Request
         response = requests.get(FOURSQUARE_API_URL, headers=HEADERS, params=params)
         response.raise_for_status()
         data = response.json()
+
+        print("✅ Foursquare API Response:", data)
 
         # ✅ Extract Results
         results = data.get("results", [])
 
         if not results:
-            raise HTTPException(status_code=404, detail="⚠️ No providers found.")
+            print("⚠️ No providers found in Foursquare API response.")
+            raise HTTPException(status_code=404, detail="⚠️ No providers found for the given service.")
 
-        # ✅ Parse Results with Categories
-        final_providers = []
+        # ✅ Filter Results Based on Service Keywords
+        keywords = SERVICE_KEYWORDS.get(service_name, [])
+        
+        relevant_providers: List[Dict[str, str]] = []
+        fallback_providers: List[Dict[str, str]] = []
+
         for place in results:
-            categories = [
-                category["name"].lower() for category in place.get("categories", [])
-            ]
+            categories = [category["name"].lower() for category in place.get("categories", [])]
 
             provider = {
                 "business_name": place.get("name", "Unknown"),
-                "address": place.get("location", {}).get("formatted_address", "N/A"),
+                "address": place.get("location", {}).get("formatted_address", "Not available"),
                 "contact_number": place.get("tel", "N/A"),
                 "website": place.get("website", "N/A"),
+                "categories": categories,
+                "latitude": str(place.get("geocodes", {}).get("main", {}).get("latitude", "N/A")),
+                "longitude": str(place.get("geocodes", {}).get("main", {}).get("longitude", "N/A")),
                 "rating": place.get("rating", "N/A"),
-                "price": place.get("price", {}).get("tier", "N/A"),
-                "category": categories[0] if categories else "General"
+                "price": place.get("price", {}).get("tier", "N/A")
             }
 
-            # ✅ Store in MongoDB for caching
-            providers_collection.insert_one(provider)
-            final_providers.append(provider)
+            # ✅ Classify Providers: Relevant vs Fallback
+            if any(keyword in " ".join(categories) for keyword in keywords):
+                relevant_providers.append(provider)
+            else:
+                fallback_providers.append(provider)
 
+        # ✅ Ensure Minimum of 5-10 Providers
+        final_providers = relevant_providers[:limit]
+
+        # 🔥 Add Fallback Providers if less than 5 relevant ones
+        if len(final_providers) < 5:
+            needed = 5 - len(final_providers)
+            final_providers.extend(fallback_providers[:needed])
+
+        # ✅ Ensure 5-10 Providers are Displayed
+        final_providers = final_providers[:max(5, min(limit, 10))]
+
+        print(f"✅ Providers Found: {len(final_providers)}")
         return {"providers": final_providers}
 
     except requests.exceptions.RequestException as req_err:
-        raise HTTPException(status_code=502, detail=f"API request failed: {str(req_err)}")
+        print(f"❌ API Request Error: {req_err}")
+        raise HTTPException(status_code=502, detail=f"External API request failed: {str(req_err)}")
 
     except Exception as e:
+        print(f"❌ Unexpected Error: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
