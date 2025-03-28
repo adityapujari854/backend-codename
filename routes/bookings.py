@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from models.booking import Booking
 from database import bookings_collection
 from middlewares.middleware import get_current_user
-from utils.utils import store_booking_in_db, send_booking_confirmation_email
+from utils import store_booking_in_db, send_booking_confirmation_email
 import logging
 from pydantic import ValidationError
 from typing import List

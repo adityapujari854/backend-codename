@@ -3,7 +3,7 @@ from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from database import users_collection
 from auth.jwt_handler import create_jwt_token, verify_jwt_token
-from utils.utils import send_verification_email
+from utils import send_verification_email
 import os
 import random
 
