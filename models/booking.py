@@ -17,7 +17,7 @@ bookings_router = APIRouter()
 class Booking(BaseModel):
     email: EmailStr
     name: str = Field(..., min_length=2, max_length=100)
-    phone: str = Field(..., min_length=10, max_length=15, regex=r'^\d+$')
+    phone: str = Field(..., min_length=10, max_length=15, pattern=r'^\d+$')
     address: str = Field(..., min_length=5, max_length=200)
     serviceName: str = Field(..., min_length=2, max_length=100)
     providerName: str = Field(..., min_length=2, max_length=100)
