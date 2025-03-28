@@ -1,86 +1,92 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Body
 from models.booking import Booking
 from database import bookings_collection
-from middlewares.middleware import get_current_user  # ✅ Import Fixed
-
-import requests
-import os
-
-# ✅ Load Brevo API Key from Environment Variables
-BREVO_API_KEY = os.getenv("BREVO_API_KEY")
-BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL")
-
-if not BREVO_API_KEY:
-    raise ValueError("❌ BREVO_API_KEY is not set in the environment variables!")
+from middlewares.middleware import get_current_user
+from utils.utils import store_booking_in_db, send_booking_confirmation_email
+import logging
 
 # ✅ Initialize Router
 bookings_router = APIRouter()
 
-# ✅ Function to Send Booking Confirmation Email via Brevo API
-def send_booking_confirmation(booking: Booking):
-    email_data = {
-        "sender": {"name": "Homezy Services", "email": BREVO_SENDER_EMAIL},
-        "to": [{"email": booking.email, "name": booking.name}],
-        "subject": "Booking Confirmation - Homezy",
-        "htmlContent": f"""
-            <h2>📅 Booking Confirmation</h2>
-            <p>Dear {booking.name},</p>
-            <p>Your booking for <strong>{booking.serviceName}</strong> with <strong>{booking.providerName}</strong> has been confirmed.</p>
-            <p><strong>Booking Details:</strong></p>
-            <ul>
-                <li><strong>Service:</strong> {booking.serviceName}</li>
-                <li><strong>Provider:</strong> {booking.providerName}</li>
-                <li><strong>Price:</strong> ₹{booking.price}</li>
-                <li><strong>Address:</strong> {booking.address}</li>
-                <li><strong>Phone:</strong> {booking.phone}</li>
-                <li><strong>Remarks:</strong> {booking.remarks}</li>
-            </ul>
-            <p>Thank you for choosing Homezy! 🚀</p>
-        """
-    }
+# ✅ Configure Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "api-key": BREVO_API_KEY
-    }
 
-    response = requests.post("https://api.brevo.com/v3/smtp/email", json=email_data, headers=headers)
-    
-    if response.status_code not in [200, 201]:
-        print("❌ Email sending failed:", response.json())
-        raise HTTPException(status_code=500, detail="Failed to send confirmation email")
-
-    print("✅ Email sent successfully to", booking.email)
-
-# ✅ Save a booking (Requires authentication)
+# ✅ Save a Booking (Requires Authentication)
 @bookings_router.post("/", summary="Create a new booking")
 def create_booking(booking: Booking, authorization: str = Header(None)):
-    print("📥 Received Booking Request:", booking.dict())  # ✅ Debugging
-    print("🛂 Authorization Header:", authorization)       # ✅ Debugging
+    """
+    Save a new booking and send confirmation email.
 
+    Args:
+        booking (Booking): Booking details.
+        authorization (str): JWT token for authentication.
+
+    Returns:
+        dict: Confirmation message.
+    """
+    logger.info("📥 Received Booking Request: %s", booking.dict())
+    logger.info("🛂 Authorization Header: %s", authorization)
+
+    # ✅ Authenticate User
     user_email = get_current_user(authorization)
-    
+
     if user_email != booking.email:
-        print("❌ Unauthorized Booking Attempt")  # ✅ Debugging
+        logger.warning("❌ Unauthorized Booking Attempt by %s", user_email)
         raise HTTPException(status_code=403, detail="Unauthorized booking request")
 
-    bookings_collection.insert_one(booking.dict(by_alias=True, exclude_unset=True))
-    print("✅ Booking Successfully Stored in Database!")  # ✅ Debugging
+    # ✅ Prepare booking data for MongoDB
+    booking_data = {
+        "email": booking.email,
+        "name": booking.name,
+        "phone": booking.phone,
+        "address": booking.address,
+        "services": [
+            {
+                "service_name": booking.serviceName,
+                "provider_name": booking.providerName,
+                "price": booking.price,
+                "remarks": booking.remarks
+            }
+        ],
+        "total_price": booking.price
+    }
 
-    send_booking_confirmation(booking)
-    print("📧 Email Sent to", booking.email)  # ✅ Debugging
+    # ✅ Store booking in MongoDB
+    if not store_booking_in_db(booking_data):
+        raise HTTPException(status_code=500, detail="Failed to store booking in database")
+
+    # ✅ Send confirmation email
+    if not send_booking_confirmation_email(booking_data):
+        raise HTTPException(status_code=500, detail="Failed to send confirmation email")
+
+    logger.info("✅ Booking confirmed & email sent to %s", booking.email)
 
     return {"message": "✅ Booking confirmed & email sent!"}
 
-# ✅ Fetch all bookings for a user (Requires authentication)
+
+# ✅ Fetch All Bookings for a User (Requires Authentication)
 @bookings_router.get("/", summary="Get all bookings for the logged-in user")
 def get_user_bookings(authorization: str = Header(None)):
+    """
+    Fetch all bookings for the authenticated user.
+
+    Args:
+        authorization (str): JWT token for authentication.
+
+    Returns:
+        dict: User bookings.
+    """
+    # ✅ Authenticate User
     user_email = get_current_user(authorization)
+    
+    # ✅ Fetch bookings from MongoDB
     bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
 
     if not bookings:
+        logger.warning("⚠️ No bookings found for %s", user_email)
         raise HTTPException(status_code=404, detail="⚠️ No bookings found!")
 
-    print(f"✅ {len(bookings)} bookings found for {user_email}")
+    logger.info(f"✅ {len(bookings)} bookings found for {user_email}")
     return {"bookings": bookings}
