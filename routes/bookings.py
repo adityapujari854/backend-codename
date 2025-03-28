@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends, Header, Body
+from fastapi import APIRouter, HTTPException, Depends, Header, Body, Request
 from models.booking import Booking
 from database import bookings_collection
 from middlewares.middleware import get_current_user
 from utils.utils import store_booking_in_db, send_booking_confirmation_email
 import logging
+from pydantic import ValidationError
 
 # ✅ Initialize Router
 bookings_router = APIRouter()
@@ -12,58 +13,75 @@ bookings_router = APIRouter()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 # ✅ Save a Booking (Requires Authentication)
 @bookings_router.post("/", summary="Create a new booking")
-def create_booking(booking: Booking, authorization: str = Header(None)):
+async def create_booking(request: Request, authorization: str = Header(None)):
     """
     Save a new booking and send confirmation email.
 
     Args:
-        booking (Booking): Booking details.
+        request (Request): Incoming booking request.
         authorization (str): JWT token for authentication.
 
     Returns:
         dict: Confirmation message.
     """
-    logger.info("📥 Received Booking Request: %s", booking.dict())
-    logger.info("🛂 Authorization Header: %s", authorization)
+    logger.info("📥 Received Booking Request")
 
     # ✅ Authenticate User
     user_email = get_current_user(authorization)
 
-    if user_email != booking.email:
-        logger.warning("❌ Unauthorized Booking Attempt by %s", user_email)
-        raise HTTPException(status_code=403, detail="Unauthorized booking request")
+    try:
+        data = await request.json()
 
-    # ✅ Prepare booking data for MongoDB
-    booking_data = {
-        "email": booking.email,
-        "name": booking.name,
-        "phone": booking.phone,
-        "address": booking.address,
-        "services": [
-            {
-                "service_name": booking.serviceName,
-                "provider_name": booking.providerName,
-                "price": booking.price,
-                "remarks": booking.remarks
-            }
-        ],
-        "total_price": booking.price
-    }
+        # ✅ Validate required fields
+        required_fields = ["email", "name", "phone", "address", "serviceName", "providerName", "price"]
+        
+        for field in required_fields:
+            if field not in data or not data[field]:
+                logger.warning(f"❌ Missing field: {field}")
+                raise HTTPException(status_code=422, detail=f"Missing or invalid field: {field}")
 
-    # ✅ Store booking in MongoDB
-    if not store_booking_in_db(booking_data):
-        raise HTTPException(status_code=500, detail="Failed to store booking in database")
+        if user_email != data.get("email"):
+            logger.warning("❌ Unauthorized Booking Attempt by %s", user_email)
+            raise HTTPException(status_code=403, detail="Unauthorized booking request")
 
-    # ✅ Send confirmation email
-    if not send_booking_confirmation_email(booking_data):
-        raise HTTPException(status_code=500, detail="Failed to send confirmation email")
+        # ✅ Prepare booking data for MongoDB
+        booking_data = {
+            "email": data["email"],
+            "name": data["name"],
+            "phone": data["phone"],
+            "address": data["address"],
+            "services": [
+                {
+                    "service_name": data["serviceName"],
+                    "provider_name": data["providerName"],
+                    "price": data["price"],
+                    "remarks": data.get("remarks", "")
+                }
+            ],
+            "total_price": data["price"]
+        }
 
-    logger.info("✅ Booking confirmed & email sent to %s", booking.email)
+        # ✅ Store booking in MongoDB
+        if not store_booking_in_db(booking_data):
+            raise HTTPException(status_code=500, detail="Failed to store booking in database")
 
-    return {"message": "✅ Booking confirmed & email sent!"}
+        # ✅ Send confirmation email
+        if not send_booking_confirmation_email(booking_data):
+            raise HTTPException(status_code=500, detail="Failed to send confirmation email")
+
+        logger.info("✅ Booking confirmed & email sent to %s", data["email"])
+
+        return {"message": "✅ Booking confirmed & email sent!"}
+
+    except ValidationError as e:
+        logger.error("❌ Validation Error: %s", str(e))
+        raise HTTPException(status_code=422, detail=f"Validation error: {str(e)}")
+
+    except Exception as e:
+        logger.error("❌ Internal Server Error: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 # ✅ Fetch All Bookings for a User (Requires Authentication)
@@ -80,7 +98,7 @@ def get_user_bookings(authorization: str = Header(None)):
     """
     # ✅ Authenticate User
     user_email = get_current_user(authorization)
-    
+
     # ✅ Fetch bookings from MongoDB
     bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
 
