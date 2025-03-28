@@ -111,3 +111,4 @@ def get_user_bookings(authorization: str = Header(None)):
 
     logger.info(f"✅ {len(bookings)} bookings found for {user_email}")
     return {"bookings": bookings}
+    
