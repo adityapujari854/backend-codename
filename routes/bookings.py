@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Depends, Header, Body, Request
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from models.booking import Booking
 from database import bookings_collection
 from middlewares.middleware import get_current_user
 from utils.utils import store_booking_in_db, send_booking_confirmation_email
 import logging
 from pydantic import ValidationError
+from typing import List
 
 # ✅ Initialize Router
 bookings_router = APIRouter()
@@ -35,8 +36,8 @@ async def create_booking(request: Request, authorization: str = Header(None)):
         data = await request.json()
 
         # ✅ Validate required fields
-        required_fields = ["email", "name", "phone", "address", "serviceName", "providerName", "price"]
-        
+        required_fields = ["email", "name", "phone", "address", "services", "total_price"]
+
         for field in required_fields:
             if field not in data or not data[field]:
                 logger.warning(f"❌ Missing field: {field}")
@@ -46,32 +47,35 @@ async def create_booking(request: Request, authorization: str = Header(None)):
             logger.warning("❌ Unauthorized Booking Attempt by %s", user_email)
             raise HTTPException(status_code=403, detail="Unauthorized booking request")
 
-        # ✅ Prepare booking data for MongoDB
-        booking_data = {
-            "email": data["email"],
-            "name": data["name"],
-            "phone": data["phone"],
-            "address": data["address"],
-            "services": [
-                {
-                    "serviceName": data["serviceName"],  # 🔄 Keep frontend naming
-                    "providerName": data["providerName"],  # 🔄 Keep frontend naming
-                    "price": data["price"],
-                    "remarks": data.get("remarks", "")
-                }
-            ],
-            "total_price": data["price"]
-        }
+        # ✅ Validate services list
+        if not isinstance(data["services"], list) or len(data["services"]) == 0:
+            logger.error("❌ Invalid or empty services list")
+            raise HTTPException(status_code=422, detail="Invalid services list")
+
+        for service in data["services"]:
+            if "serviceName" not in service or "providerName" not in service or "price" not in service:
+                logger.error("❌ Missing service details: %s", service)
+                raise HTTPException(status_code=422, detail="Missing or invalid service details")
+
+            if not isinstance(service["price"], (int, float)) or service["price"] <= 0:
+                logger.error("❌ Invalid price in service: %s", service)
+                raise HTTPException(status_code=422, detail="Invalid price value in services")
+
+        # ✅ Ensure total price matches sum of all services
+        calculated_total = sum(service["price"] for service in data["services"])
+        if calculated_total != data["total_price"]:
+            logger.warning("⚠️ Mismatch in total price calculation: Expected %s, Got %s", calculated_total, data["total_price"])
+            raise HTTPException(status_code=422, detail="Total price mismatch")
 
         # ✅ Store booking in MongoDB
-        if not store_booking_in_db(booking_data):
-            logger.error("❌ Database Insertion Failed for Booking: %s", booking_data)
+        if not store_booking_in_db(data):
+            logger.error("❌ Database Insertion Failed for Booking: %s", data)
             raise HTTPException(status_code=500, detail="Failed to store booking in database")
 
         # ✅ Send confirmation email
-        email_status = send_booking_confirmation_email(booking_data)
+        email_status = send_booking_confirmation_email(data)
         if not email_status:
-            logger.error("❌ Email Sending Failed for Booking: %s", booking_data)
+            logger.error("❌ Email Sending Failed for Booking: %s", data)
             raise HTTPException(status_code=500, detail="Failed to send confirmation email")
 
         logger.info("✅ Booking confirmed & email sent to %s", data["email"])
@@ -111,4 +115,3 @@ def get_user_bookings(authorization: str = Header(None)):
 
     logger.info(f"✅ {len(bookings)} bookings found for {user_email}")
     return {"bookings": bookings}
-    
