@@ -54,8 +54,8 @@ async def create_booking(request: Request, authorization: str = Header(None)):
             "address": data["address"],
             "services": [
                 {
-                    "service_name": data["serviceName"],
-                    "provider_name": data["providerName"],
+                    "serviceName": data["serviceName"],  # 🔄 Keep frontend naming
+                    "providerName": data["providerName"],  # 🔄 Keep frontend naming
                     "price": data["price"],
                     "remarks": data.get("remarks", "")
                 }
