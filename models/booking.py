@@ -22,7 +22,7 @@ class Booking(BaseModel):
     serviceName: str = Field(..., min_length=2, max_length=100)
     providerName: str = Field(..., min_length=2, max_length=100)
     price: float = Field(..., gt=0)  # Accepts both `int` and `float`
-    remarks: str = Field(..., min_length=0, max_length=300)
+    remarks: str = Field(default="", max_length=300)  # Optional remarks with a default empty string
 
 # ✅ Dependency to get MongoDB Collection
 def get_bookings_collection() -> Collection:
@@ -49,7 +49,12 @@ async def create_booking(
             raise HTTPException(status_code=422, detail="Invalid price value")
 
         # ✅ Insert booking into MongoDB
-        collection.insert_one(booking.dict())
+        try:
+            collection.insert_one(booking.dict())
+            logger.info("✅ Booking saved successfully in DB for %s", booking.email)
+        except Exception as db_error:
+            logger.error("❌ Database Insertion Failed: %s", str(db_error))
+            raise HTTPException(status_code=500, detail="Database error: Could not save booking")
 
         # ✅ Send Confirmation Email
         try:
@@ -59,12 +64,10 @@ async def create_booking(
                 message=f"Your booking for {booking.serviceName} with {booking.providerName} has been confirmed. Total: ₹{booking.price}"
             )
             logger.info("✅ Email sent successfully to %s", booking.email)
-
+            return {"message": "✅ Booking confirmed & email sent!"}
         except Exception as e:
-            logger.error("❌ Error sending email: %s", str(e))
-            raise HTTPException(status_code=500, detail="Email sending failed")
-
-        return {"message": "✅ Booking confirmed & email sent!"}
+            logger.error("⚠️ Email Sending Failed: %s", str(e))
+            return {"message": "✅ Booking confirmed, but email failed to send"}
 
     except ValidationError as e:
         logger.error("❌ Validation Error: %s", str(e))

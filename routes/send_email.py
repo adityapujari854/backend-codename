@@ -2,9 +2,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 import requests
 import os
+import redis
+import random
 
 # ✅ Load Brevo API Key
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+
+# ✅ Initialize Redis Connection
+redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
 
 # ✅ Initialize Router
 email_router = APIRouter()
@@ -14,6 +19,10 @@ class EmailRequest(BaseModel):
     to: EmailStr
     subject: str
     message: str
+
+class OTPVerifyRequest(BaseModel):
+    email: EmailStr
+    otp: str
 
 # ✅ Function to Send Email via Brevo API
 def send_email(to: str, subject: str, message: str):
@@ -47,16 +56,29 @@ def send_custom_email(email_request: EmailRequest):
 # ✅ API to Send OTP Verification Email
 @email_router.post("/send-otp")
 def send_otp_email(email: EmailStr):
-    import random
     otp = str(random.randint(100000, 999999))
 
-    # ✅ Store OTP temporarily (In-memory storage, Redis, or Database can be used)
-    # TODO: Implement proper OTP storage & expiration logic
-    otp_storage = {}  # Temporary dictionary storage
-    otp_storage[email] = otp
+    # ✅ Store OTP in Redis with 5-minute expiration
+    redis_client.setex(f"otp:{email}", 300, otp)
 
     try:
         send_email(email, "Your OTP Verification Code", f"Your OTP code is: <strong>{otp}</strong>")
-        return {"message": "OTP sent successfully!", "otp": otp}  # Remove OTP in production response
+        return {"message": "OTP sent successfully!"}
     except HTTPException as e:
         return {"error": str(e.detail)}
+
+# ✅ API to Verify OTP
+@email_router.post("/verify-otp")
+def verify_otp(request: OTPVerifyRequest):
+    stored_otp = redis_client.get(f"otp:{request.email}")
+
+    if stored_otp is None:
+        raise HTTPException(status_code=400, detail="OTP expired or not found")
+
+    if stored_otp != request.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+
+    # ✅ OTP is valid, delete it after verification
+    redis_client.delete(f"otp:{request.email}")
+    
+    return {"message": "✅ OTP verified successfully!"}

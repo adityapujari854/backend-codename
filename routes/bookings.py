@@ -65,10 +65,13 @@ async def create_booking(request: Request, authorization: str = Header(None)):
 
         # ✅ Store booking in MongoDB
         if not store_booking_in_db(booking_data):
+            logger.error("❌ Database Insertion Failed for Booking: %s", booking_data)
             raise HTTPException(status_code=500, detail="Failed to store booking in database")
 
         # ✅ Send confirmation email
-        if not send_booking_confirmation_email(booking_data):
+        email_status = send_booking_confirmation_email(booking_data)
+        if not email_status:
+            logger.error("❌ Email Sending Failed for Booking: %s", booking_data)
             raise HTTPException(status_code=500, detail="Failed to send confirmation email")
 
         logger.info("✅ Booking confirmed & email sent to %s", data["email"])
