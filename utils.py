@@ -122,8 +122,8 @@ def send_booking_confirmation_email(booking_data):
     🎉 Thank you for booking with Homezy!
 
     📌 **Booking Details:**
-    - **Phone:** {phone}
-    - **Address:** {address}
+    - Phone: {phone}
+    - Address: {address}
 
     🛠️ **Services Booked:**
     {services_details}
