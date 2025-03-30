@@ -34,7 +34,7 @@ async def create_booking(request: Request, authorization: str = Header(None)):
     try:
         data = await request.json()
 
-        # ✅ Validate required fields
+        # ✅ Validate required fields (Removed price validation)
         required_fields = ["email", "name", "phone", "address", "services"]
 
         for field in required_fields:
@@ -56,10 +56,14 @@ async def create_booking(request: Request, authorization: str = Header(None)):
                 logger.error("❌ Missing service details: %s", service)
                 raise HTTPException(status_code=422, detail="Missing or invalid service details")
 
-        # ✅ Store booking in MongoDB
-        if not store_booking_in_db(data):
-            logger.error("❌ Database Insertion Failed for Booking: %s", data)
-            raise HTTPException(status_code=500, detail="Failed to store booking in database")
+        # ✅ Store booking in MongoDB (With `None` check)
+        if bookings_collection is not None:
+            if not store_booking_in_db(data):
+                logger.error("❌ Database Insertion Failed for Booking: %s", data)
+                raise HTTPException(status_code=500, detail="Failed to store booking in database")
+        else:
+            logger.error("❌ MongoDB collection is None")
+            raise HTTPException(status_code=500, detail="Database connection error")
 
         # ✅ Send confirmation email
         email_status = send_booking_confirmation_email(data)
@@ -95,12 +99,17 @@ def get_user_bookings(authorization: str = Header(None)):
     # ✅ Authenticate User
     user_email = get_current_user(authorization)
 
-    # ✅ Fetch bookings from MongoDB
-    bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
+    if bookings_collection is not None:
+        # ✅ Fetch bookings from MongoDB
+        bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
 
-    if not bookings:
-        logger.warning("⚠️ No bookings found for %s", user_email)
-        raise HTTPException(status_code=404, detail="⚠️ No bookings found!")
+        if not bookings:
+            logger.warning("⚠️ No bookings found for %s", user_email)
+            raise HTTPException(status_code=404, detail="⚠️ No bookings found!")
 
-    logger.info(f"✅ {len(bookings)} bookings found for {user_email}")
-    return {"bookings": bookings}
+        logger.info(f"✅ {len(bookings)} bookings found for {user_email}")
+        return {"bookings": bookings}
+
+    else:
+        logger.error("❌ MongoDB collection is None")
+        raise HTTPException(status_code=500, detail="Database connection error")

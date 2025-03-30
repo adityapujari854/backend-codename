@@ -14,21 +14,19 @@ logger = logging.getLogger(__name__)
 # ✅ Initialize Router
 bookings_router = APIRouter()
 
-# ✅ Service Model
+# ✅ Service Model (Price removed)
 class ServiceItem(BaseModel):
     serviceName: str = Field(..., min_length=2, max_length=100)
     providerName: str = Field(..., min_length=2, max_length=100)
-    # price: float = Field(..., gt=0)  # Accepts both `int` and `float`
     remarks: Optional[str] = Field(default="", max_length=300)  # Optional remarks
 
-# ✅ Booking Model (Updated to Support Multiple Services)
+# ✅ Booking Model (Price removed)
 class Booking(BaseModel):
     email: EmailStr
     name: str = Field(..., min_length=2, max_length=100)
     phone: str = Field(..., min_length=10, max_length=15, pattern=r'^\d+$')
     address: str = Field(..., min_length=5, max_length=200)
     services: List[ServiceItem]  # ✅ Multiple services per booking
-    # total_price: float = Field(..., gt=0)  # Sum of all service prices
 
 # ✅ Dependency to get MongoDB Collection
 def get_bookings_collection() -> Collection:
@@ -41,6 +39,17 @@ async def create_booking(
     authorization: str = Header(None), 
     collection: Collection = Depends(get_bookings_collection)
 ):
+    """
+    Save a new booking and send confirmation email.
+
+    Args:
+        booking (Booking): Incoming booking data.
+        authorization (str): JWT token for authentication.
+        collection (Collection): MongoDB collection dependency.
+
+    Returns:
+        dict: Confirmation message.
+    """
     try:
         # ✅ Authenticate User
         user_email = get_current_user(authorization)
@@ -60,30 +69,28 @@ async def create_booking(
                 logger.error("❌ Missing service details: %s", service.dict())
                 raise HTTPException(status_code=422, detail="Missing or invalid service details")
 
-        # ✅ Calculate total price
-        # calculated_total = sum(service.price for service in booking.services)
-        # if calculated_total != booking.total_price:
-        #     logger.warning("⚠️ Mismatch in total price calculation: Expected %s, Got %s", calculated_total, booking.total_price)
-        #     raise HTTPException(status_code=422, detail="Total price mismatch")
-
-        # ✅ Insert booking into MongoDB
-        try:
-            booking_dict = booking.dict()
-            collection.insert_one(booking_dict)
-            logger.info("✅ Booking saved successfully in DB for %s", booking.email)
-        except Exception as db_error:
-            logger.error("❌ Database Insertion Failed: %s", str(db_error))
-            raise HTTPException(status_code=500, detail="Database error: Could not save booking")
+        # ✅ Insert booking into MongoDB with `None` check
+        if collection is not None:
+            try:
+                booking_dict = booking.dict()
+                collection.insert_one(booking_dict)
+                logger.info("✅ Booking saved successfully in DB for %s", booking.email)
+            except Exception as db_error:
+                logger.error("❌ Database Insertion Failed: %s", str(db_error))
+                raise HTTPException(status_code=500, detail="Database error: Could not save booking")
+        else:
+            logger.error("❌ MongoDB collection is None")
+            raise HTTPException(status_code=500, detail="Database connection error")
 
         # ✅ Send Confirmation Email
         try:
             service_details = "\n".join(
-                [f"- {s.serviceName} with {s.providerName}: ₹ N/A " for s in booking.services]
+                [f"- {s.serviceName} with {s.providerName}" for s in booking.services]
             )
             send_email(
                 recipient_email=booking.email,
                 subject="Booking Confirmed - Homezy",
-                message=f"Your booking has been confirmed!\n\nDetails:\n{service_details}\nTotal: ₹ N/A "
+                message=f"Your booking has been confirmed!\n\nDetails:\n{service_details}\n"
             )
             logger.info("✅ Email sent successfully to %s", booking.email)
             return {"message": "✅ Booking confirmed & email sent!"}
