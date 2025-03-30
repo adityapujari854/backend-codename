@@ -4,6 +4,7 @@ from database import services_collection
 from bson import ObjectId
 import logging
 import requests
+import os
 
 # ✅ Initialize Router
 services_router = APIRouter()
@@ -17,7 +18,7 @@ def get_services_collection() -> Collection:
     return services_collection
 
 # ✅ Foursquare API Credentials (Replace with Your API Key)
-FOURSQUARE_API_KEY = "fsq3LYB6FD4cl0rKy+iRre2J6vX3OYbh/RT7ZBwx0wfb2C4="
+FOURSQUARE_API_KEY = os.getenv("FOURSQUARE_API_KEY")
 FOURSQUARE_API_URL = "https://api.foursquare.com/v3/places/search"
 
 # ✅ Fetch Price from Foursquare API
