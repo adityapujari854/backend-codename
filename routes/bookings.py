@@ -73,7 +73,7 @@ async def create_booking(request: Request, authorization: str = Header(None)):
             # ✅ Format Address Properly
             address = (
                 f"- **Flat:** {data['address'].get('flat', 'N/A')}\n"
-                f"- **Road:** {data['address'].get('road', 'N/A')}\n"
+                f"- **Street:** {data['address'].get('street', 'N/A')}\n"
                 f"- **Landmark:** {data['address'].get('landmark', 'N/A')}\n"
                 f"- **City:** {data['address'].get('city', 'N/A')}\n"
                 f"- **State:** {data['address'].get('state', 'N/A')}\n"
