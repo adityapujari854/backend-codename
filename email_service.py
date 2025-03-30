@@ -10,6 +10,7 @@ import time
 load_dotenv()
 
 # ✅ Email Config
+BREVO_SENDER_EMAIL=os.getenv("BREVO_SENDER_EMAIL")
 SMTP_SERVER = os.getenv("SMTP_SERVER")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME")
@@ -31,7 +32,7 @@ def send_email(to_email, subject, message, is_html=False):
         try:
             # ✅ Set up the email
             msg = MIMEMultipart()
-            msg['From'] = SMTP_USERNAME
+            msg['From'] = BREVO_SENDER_EMAIL
             msg['To'] = to_email
             msg['Subject'] = subject
             msg.attach(MIMEText(message, 'html' if is_html else 'plain'))
@@ -40,7 +41,7 @@ def send_email(to_email, subject, message, is_html=False):
             with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.sendmail(SMTP_USERNAME, to_email, msg.as_string())
+                server.sendmail(BREVO_SENDER_EMAIL, to_email, msg.as_string())
 
             logger.info(f"✅ Email sent successfully to {to_email}")
             return True
