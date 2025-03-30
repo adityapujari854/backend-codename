@@ -40,7 +40,7 @@ async def create_booking(
     collection: Collection = Depends(get_bookings_collection)
 ):
     """
-    Save a new booking and send confirmation email.
+    Save a new booking and send confirmation email with sender details.
 
     Args:
         booking (Booking): Incoming booking data.
@@ -69,7 +69,7 @@ async def create_booking(
                 logger.error("❌ Missing service details: %s", service.dict())
                 raise HTTPException(status_code=422, detail="Missing or invalid service details")
 
-        # ✅ Insert booking into MongoDB with `None` check
+        # ✅ Insert booking into MongoDB
         if collection is not None:
             try:
                 booking_dict = booking.dict()
@@ -82,18 +82,31 @@ async def create_booking(
             logger.error("❌ MongoDB collection is None")
             raise HTTPException(status_code=500, detail="Database connection error")
 
-        # ✅ Send Confirmation Email
+        # ✅ Send Confirmation Email with Sender Details
         try:
             service_details = "\n".join(
                 [f"- {s.serviceName} with {s.providerName}" for s in booking.services]
             )
+
             send_email(
                 recipient_email=booking.email,
                 subject="Booking Confirmed - Homezy",
-                message=f"Your booking has been confirmed!\n\nDetails:\n{service_details}\n"
+                message=(
+                    f"Hello {booking.name},\n\n"
+                    "Your booking has been confirmed!\n\n"
+                    f"Details:\n{service_details}\n"
+                    f"📞 Phone: {booking.phone}\n"
+                    f"🏠 Address: {booking.address}\n"
+                ),
+                sender={
+                    "name": "Homezy Services", 
+                    "email": "no-reply@homezy.com"
+                }
             )
+            
             logger.info("✅ Email sent successfully to %s", booking.email)
             return {"message": "✅ Booking confirmed & email sent!"}
+
         except Exception as e:
             logger.error("⚠️ Email Sending Failed: %s", str(e))
             return {"message": "✅ Booking confirmed, but email failed to send"}
