@@ -21,22 +21,6 @@ def get_services_collection() -> Collection:
 FOURSQUARE_API_KEY = os.getenv("FOURSQUARE_API_KEY")
 FOURSQUARE_API_URL = "https://api.foursquare.com/v3/places/search"
 
-# ✅ Fetch Price from Foursquare API
-def fetch_price_from_foursquare(service_name: str):
-    headers = {"Authorization": FOURSQUARE_API_KEY}
-    params = {"query": service_name, "limit": 1}
-
-    try:
-        response = requests.get(FOURSQUARE_API_URL, headers=headers, params=params, timeout=5)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("results"):
-            return data["results"][0].get("price")
-    except requests.RequestException as e:
-        logger.error(f"❌ Foursquare API error: {e}")
-
-    return None
-
 # ✅ Fetch Providers from Foursquare API
 def fetch_providers_from_foursquare(category_name: str):
     headers = {"Authorization": FOURSQUARE_API_KEY}
@@ -58,7 +42,6 @@ def fetch_providers_from_foursquare(category_name: str):
                 "address": place.get("location", {}).get("formatted_address", "Address not available"),
                 "contact_number": place.get("contact", {}).get("phone", "N/A"),
                 "website": place.get("website", "N/A"),
-                "price": place.get("price", "N/A"),
                 "rating": place.get("rating", "No rating"),
             })
 
@@ -152,10 +135,6 @@ async def get_service(service_name: str, collection: Collection = Depends(get_se
         raise HTTPException(status_code=404, detail=f"Service '{service_name}' not found")
 
     service = convert_mongo_document(service)
-
-    # ✅ Fetch price only if missing
-    if not service.get("price"):
-        service["price"] = fetch_price_from_foursquare(service_name)
 
     return {"service": service}
 
