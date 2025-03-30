@@ -33,7 +33,6 @@ def test_create_booking(auth_headers):
         "address": "123 Main Street",
         "serviceName": "Plumbing",
         "providerName": "ABC Plumbers",
-        "price": 500,
         "remarks": "Fix leaking pipe"
     }, headers=auth_headers)
 
@@ -48,7 +47,6 @@ def test_create_booking_unauthorized():
         "address": "456 Market Street",
         "serviceName": "Cleaning",
         "providerName": "XYZ Cleaners",
-        "price": 700,
         "remarks": "Deep cleaning"
     })
     assert response.status_code == 401
