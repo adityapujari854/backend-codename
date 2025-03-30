@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Depends, Header, Request
+from fastapi import APIRouter, HTTPException, Header, Depends, Request
 from models.booking import Booking
 from database import bookings_collection
 from middlewares.middleware import get_current_user
 from utils import store_booking_in_db, send_booking_confirmation_email
 import logging
 from pydantic import ValidationError
+from typing import List
 
 # ✅ Initialize Router
 bookings_router = APIRouter()
@@ -34,7 +35,7 @@ async def create_booking(request: Request, authorization: str = Header(None)):
     try:
         data = await request.json()
 
-        # ✅ Validate required fields (Removed price validation)
+        # ✅ Validate required fields
         required_fields = ["email", "name", "phone", "address", "services"]
 
         for field in required_fields:
@@ -56,14 +57,15 @@ async def create_booking(request: Request, authorization: str = Header(None)):
                 logger.error("❌ Missing service details: %s", service)
                 raise HTTPException(status_code=422, detail="Missing or invalid service details")
 
-        # ✅ Store booking in MongoDB (With `None` check)
-        if bookings_collection is not None:
-            if not store_booking_in_db(data):
-                logger.error("❌ Database Insertion Failed for Booking: %s", data)
-                raise HTTPException(status_code=500, detail="Failed to store booking in database")
-        else:
-            logger.error("❌ MongoDB collection is None")
-            raise HTTPException(status_code=500, detail="Database connection error")
+        # ✅ Database Validation: Check if MongoDB collection is valid
+        if bookings_collection is None:
+            logger.error("❌ Database collection is not initialized")
+            raise HTTPException(status_code=500, detail="Database collection is None")
+
+        # ✅ Store booking in MongoDB
+        if not store_booking_in_db(data):
+            logger.error("❌ Database Insertion Failed for Booking: %s", data)
+            raise HTTPException(status_code=500, detail="Failed to store booking in database")
 
         # ✅ Send confirmation email
         email_status = send_booking_confirmation_email(data)
@@ -99,17 +101,17 @@ def get_user_bookings(authorization: str = Header(None)):
     # ✅ Authenticate User
     user_email = get_current_user(authorization)
 
-    if bookings_collection is not None:
-        # ✅ Fetch bookings from MongoDB
-        bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
+    # ✅ Database Validation: Check if MongoDB collection is valid
+    if bookings_collection is None:
+        logger.error("❌ Database collection is not initialized")
+        raise HTTPException(status_code=500, detail="Database collection is None")
 
-        if not bookings:
-            logger.warning("⚠️ No bookings found for %s", user_email)
-            raise HTTPException(status_code=404, detail="⚠️ No bookings found!")
+    # ✅ Fetch bookings from MongoDB
+    bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
 
-        logger.info(f"✅ {len(bookings)} bookings found for {user_email}")
-        return {"bookings": bookings}
+    if not bookings:
+        logger.warning("⚠️ No bookings found for %s", user_email)
+        raise HTTPException(status_code=404, detail="⚠️ No bookings found!")
 
-    else:
-        logger.error("❌ MongoDB collection is None")
-        raise HTTPException(status_code=500, detail="Database connection error")
+    logger.info(f"✅ {len(bookings)} bookings found for {user_email}")
+    return {"bookings": bookings}
