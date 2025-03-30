@@ -5,7 +5,7 @@ from database import bookings_collection
 from middlewares.middleware import get_current_user
 from email_service import send_email
 import logging
-from typing import List, Optional
+from typing import List, Dict, Optional
 
 # ✅ Configure Logging
 logging.basicConfig(level=logging.INFO)
@@ -14,18 +14,24 @@ logger = logging.getLogger(__name__)
 # ✅ Initialize Router
 bookings_router = APIRouter()
 
-# ✅ Service Model (Price removed)
+# ✅ Service Model
 class ServiceItem(BaseModel):
     serviceName: str = Field(..., min_length=2, max_length=100)
     providerName: str = Field(..., min_length=2, max_length=100)
     remarks: Optional[str] = Field(default="", max_length=300)  # Optional remarks
 
-# ✅ Booking Model (Price removed)
+# ✅ Address Model
+class Address(BaseModel):
+    flat: str = Field(..., min_length=2, max_length=100)
+    road: str = Field(..., min_length=2, max_length=100)
+    landmark: str = Field(..., min_length=2, max_length=100)
+
+# ✅ Booking Model
 class Booking(BaseModel):
     email: EmailStr
     name: str = Field(..., min_length=2, max_length=100)
     phone: str = Field(..., min_length=10, max_length=15, pattern=r'^\d+$')
-    address: str = Field(..., min_length=5, max_length=200)
+    address: Address
     services: List[ServiceItem]  # ✅ Multiple services per booking
 
 # ✅ Dependency to get MongoDB Collection
@@ -82,28 +88,43 @@ async def create_booking(
             logger.error("❌ MongoDB collection is None")
             raise HTTPException(status_code=500, detail="Database connection error")
 
-        # ✅ Send Confirmation Email with Sender Details
+        # ✅ Send Confirmation Email with Proper Sender Details
         try:
-            service_details = "\n".join(
-                [f"- {s.serviceName} with {s.providerName}" for s in booking.services]
+            # ✅ Format Service Details
+            services_list = "\n".join(
+                [f"- {s.serviceName} by {s.providerName}" for s in booking.services]
             )
 
+            # ✅ Format Address Properly
+            address = (
+                f"🏠 *Address:* {booking.address.flat}, {booking.address.road}, {booking.address.landmark}"
+            )
+
+            # ✅ Email Content
+            email_message = (
+                f"Dear {booking.name},\n\n"
+                "🎉 Thank you for booking with Homezy!\n\n"
+                "📌 *Booking Details:*\n"
+                f"- Phone: {booking.phone}\n"
+                f"{address}\n\n"
+                "🛠 *Services Booked:*\n"
+                f"{services_list}\n\n"
+                "✅ Your booking is confirmed. We'll reach out shortly with further details.\n\n"
+                "Regards,\n"
+                "The Homezy Team"
+            )
+
+            # ✅ Send the email with sender info
             send_email(
                 recipient_email=booking.email,
                 subject="Booking Confirmed - Homezy",
-                message=(
-                    f"Hello {booking.name},\n\n"
-                    "Your booking has been confirmed!\n\n"
-                    f"Details:\n{service_details}\n"
-                    f"📞 Phone: {booking.phone}\n"
-                    f"🏠 Address: {booking.address}\n"
-                ),
+                message=email_message,
                 sender={
                     "name": "Homezy Services", 
                     "email": "no-reply@homezy.com"
                 }
             )
-            
+
             logger.info("✅ Email sent successfully to %s", booking.email)
             return {"message": "✅ Booking confirmed & email sent!"}
 
