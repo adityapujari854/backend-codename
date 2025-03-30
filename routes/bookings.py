@@ -45,7 +45,7 @@ async def create_booking(request: Request, authorization: str = Header(None)):
 
         # ✅ Authorization Check: Ensure user is booking for themselves
         if user_email != data.get("email"):
-            logger.warning(f"❌ Unauthorized Booking Attempt by {user_email}")
+            logger.warning("❌ Unauthorized Booking Attempt by %s", user_email)
             raise HTTPException(status_code=403, detail="Unauthorized booking request")
 
         # ✅ Validate Services List
@@ -72,14 +72,17 @@ async def create_booking(request: Request, authorization: str = Header(None)):
         try:
             # ✅ Format Address Properly
             address = (
-                f"- 📍 **Flat:** {data['address']['flat']}\n"
-                f"- 🛣️ **Road:** {data['address']['road']}\n"
-                f"- 📍 **Landmark:** {data['address']['landmark']}"
+                f"- **Flat:** {data['address'].get('flat', 'N/A')}\n"
+                f"- **Road:** {data['address'].get('road', 'N/A')}\n"
+                f"- **Landmark:** {data['address'].get('landmark', 'N/A')}\n"
+                f"- **City:** {data['address'].get('city', 'N/A')}\n"
+                f"- **State:** {data['address'].get('state', 'N/A')}\n"
+                f"- **Pincode:** {data['address'].get('pincode', 'N/A')}"
             )
 
             # ✅ Format Services List
             services_list = "\n".join(
-                [f"- 🛠️ {s['serviceName']} by {s['providerName']}" for s in data["services"]]
+                [f"- {s['serviceName']} by {s['providerName']}" for s in data["services"]]
             )
 
             # ✅ Email Content
@@ -87,7 +90,7 @@ async def create_booking(request: Request, authorization: str = Header(None)):
                 f"Dear {data['name']},\n\n"
                 "🎉 Thank you for booking with Homezy!\n\n"
                 "📌 *Booking Details:*\n"
-                f"- 📞 Phone: {data['phone']}\n\n"
+                f"- 📞 Phone: {data['phone']}\n"
                 f"{address}\n\n"
                 "🛠️ *Services Booked:*\n"
                 f"{services_list}\n\n"
@@ -104,22 +107,22 @@ async def create_booking(request: Request, authorization: str = Header(None)):
             )
 
             if not email_status:
-                logger.error(f"❌ Email Sending Failed for Booking: {data}")
+                logger.error("❌ Email Sending Failed for Booking: %s", data)
                 raise HTTPException(status_code=500, detail="Failed to send confirmation email")
 
-            logger.info(f"✅ Booking confirmed & email sent to {data['email']}")
+            logger.info("✅ Booking confirmed & email sent to %s", data["email"])
             return {"message": "✅ Booking confirmed & email sent!"}
 
         except Exception as e:
-            logger.error(f"⚠️ Email Sending Failed: {str(e)}")
+            logger.error("⚠️ Email Sending Failed: %s", str(e))
             raise HTTPException(status_code=500, detail="Booking confirmed, but email failed to send")
 
     except ValidationError as e:
-        logger.error(f"❌ Validation Error: {str(e)}")
+        logger.error("❌ Validation Error: %s", str(e))
         raise HTTPException(status_code=422, detail=f"Validation error: {str(e)}")
 
     except Exception as e:
-        logger.error(f"❌ Internal Server Error: {str(e)}")
+        logger.error("❌ Internal Server Error: %s", str(e))
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
@@ -149,41 +152,8 @@ def get_user_bookings(authorization: str = Header(None)):
     bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
 
     if not bookings:
-        logger.warning(f"⚠️ No bookings found for {user_email}")
+        logger.warning("⚠️ No bookings found for %s", user_email)
         raise HTTPException(status_code=404, detail="⚠️ No bookings found!")
 
     logger.info(f"✅ {len(bookings)} bookings found for {user_email}")
     return {"bookings": bookings}
-
-
-# ✅ Fetch a Single Booking by ID
-@bookings_router.get("/{booking_id}", summary="Get a booking by ID")
-def get_booking(booking_id: str, authorization: str = Header(None)):
-    """
-    Fetch a single booking by ID.
-
-    Args:
-        booking_id (str): The ID of the booking.
-        authorization (str): JWT token for authentication.
-
-    Returns:
-        dict: Booking details.
-    """
-    logger.info(f"📥 Fetching booking with ID: {booking_id}")
-
-    # ✅ Authenticate User
-    user_email = get_current_user(authorization)
-
-    # ✅ Database Validation
-    if bookings_collection is None:
-        logger.error("❌ Database collection is not initialized")
-        raise HTTPException(status_code=500, detail="Database collection is None")
-
-    booking = bookings_collection.find_one({"_id": booking_id, "email": user_email}, {"_id": 0})
-
-    if not booking:
-        logger.warning(f"⚠️ No booking found with ID: {booking_id}")
-        raise HTTPException(status_code=404, detail="⚠️ Booking not found!")
-
-    logger.info(f"✅ Booking found: {booking}")
-    return {"booking": booking}
