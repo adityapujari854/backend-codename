@@ -1,144 +1,117 @@
-from pymongo import MongoClient, errors
-from dotenv import load_dotenv
-import os
+from fastapi import APIRouter, HTTPException, Header, Depends, Request
+from models.booking import Booking
+from database import bookings_collection
+from middlewares.middleware import get_current_user
+from utils import store_booking_in_db, send_booking_confirmation_email
 import logging
-import time
-from email_service import send_email
+from pydantic import ValidationError
+from typing import List
 
-# ✅ Load environment variables
-load_dotenv()
+# ✅ Initialize Router
+bookings_router = APIRouter()
 
-# ✅ MongoDB Config
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-DB_NAME = os.getenv("DATABASE_NAME", "homezy_db")
-RETRIES = 3
-RETRY_DELAY = 5  # seconds
-
-# ✅ Configure logging
+# ✅ Configure Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ✅ MongoDB Connection with Retry Logic
-def get_db():
-    """Establish MongoDB connection with retry logic."""
-    for attempt in range(RETRIES):
-        try:
-            logger.info(f"🔗 Connecting to MongoDB (Attempt {attempt + 1}/{RETRIES})...")
-            client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-
-            # ✅ Check if the connection is successful
-            client.server_info()  
-            logger.info("✅ MongoDB connection established successfully")
-
-            database = client[DB_NAME]
-
-            if database is None:
-                logger.error("❌ Database connection failed (None)")
-                return None
-
-            return database
-
-        except errors.ServerSelectionTimeoutError as e:
-            logger.error(f"❌ MongoDB connection timeout: {e}")
-            time.sleep(RETRY_DELAY)
-
-        except Exception as e:
-            logger.error(f"❌ Unexpected MongoDB connection error: {e}")
-            time.sleep(RETRY_DELAY)
-
-    logger.error("❌ Failed to connect to MongoDB after retries")
-    return None
-
-
-# ✅ Store Booking in MongoDB
-def store_booking_in_db(booking_data):
+# ✅ Save a Booking (Requires Authentication)
+@bookings_router.post("/", summary="Create a new booking")
+async def create_booking(request: Request, authorization: str = Header(None)):
     """
-    Store booking details in MongoDB.
+    Save a new booking and send confirmation email.
 
     Args:
-        booking_data (dict): Booking information.
+        request (Request): Incoming booking request.
+        authorization (str): JWT token for authentication.
 
     Returns:
-        bool: True if booking stored successfully, False otherwise.
+        dict: Confirmation message.
     """
-    db = get_db()
+    logger.info("📥 Received Booking Request")
 
-    # ✅ Database Validation
-    if db is None:
-        logger.error("❌ Database connection is None")
-        return False
+    # ✅ Authenticate User
+    user_email = get_current_user(authorization)
 
-    bookings_collection = db["bookings"] if db is not None else None
+    try:
+        data = await request.json()
 
+        # ✅ Validate required fields
+        required_fields = ["email", "name", "phone", "address", "services"]
+
+        for field in required_fields:
+            if field not in data or not data[field]:
+                logger.warning(f"❌ Missing field: {field}")
+                raise HTTPException(status_code=422, detail=f"Missing or invalid field: {field}")
+
+        if user_email != data.get("email"):
+            logger.warning("❌ Unauthorized Booking Attempt by %s", user_email)
+            raise HTTPException(status_code=403, detail="Unauthorized booking request")
+
+        # ✅ Validate services list
+        if not isinstance(data["services"], list) or len(data["services"]) == 0:
+            logger.error("❌ Invalid or empty services list")
+            raise HTTPException(status_code=422, detail="Invalid services list")
+
+        for service in data["services"]:
+            if "serviceName" not in service or "providerName" not in service:
+                logger.error("❌ Missing service details: %s", service)
+                raise HTTPException(status_code=422, detail="Missing or invalid service details")
+
+        # ✅ Database Validation: Check if MongoDB collection is valid
+        if bookings_collection is None:
+            logger.error("❌ Database collection is not initialized")
+            raise HTTPException(status_code=500, detail="Database collection is None")
+
+        # ✅ Store booking in MongoDB
+        if not store_booking_in_db(data):
+            logger.error("❌ Database Insertion Failed for Booking: %s", data)
+            raise HTTPException(status_code=500, detail="Failed to store booking in database")
+
+        # ✅ Send confirmation email
+        email_status = send_booking_confirmation_email(data)
+        if not email_status:
+            logger.error("❌ Email Sending Failed for Booking: %s", data)
+            raise HTTPException(status_code=500, detail="Failed to send confirmation email")
+
+        logger.info("✅ Booking confirmed & email sent to %s", data["email"])
+
+        return {"message": "✅ Booking confirmed & email sent!"}
+
+    except ValidationError as e:
+        logger.error("❌ Validation Error: %s", str(e))
+        raise HTTPException(status_code=422, detail=f"Validation error: {str(e)}")
+
+    except Exception as e:
+        logger.error("❌ Internal Server Error: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# ✅ Fetch All Bookings for a User (Requires Authentication)
+@bookings_router.get("/", summary="Get all bookings for the logged-in user")
+def get_user_bookings(authorization: str = Header(None)):
+    """
+    Fetch all bookings for the authenticated user.
+
+    Args:
+        authorization (str): JWT token for authentication.
+
+    Returns:
+        dict: User bookings.
+    """
+    # ✅ Authenticate User
+    user_email = get_current_user(authorization)
+
+    # ✅ Database Validation: Check if MongoDB collection is valid
     if bookings_collection is None:
-        logger.error("❌ Bookings collection is None")
-        return False
+        logger.error("❌ Database collection is not initialized")
+        raise HTTPException(status_code=500, detail="Database collection is None")
 
-    # ✅ Insert the booking into MongoDB
-    try:
-        result = bookings_collection.insert_one(booking_data)
-        logger.info(f"✅ Booking stored in MongoDB with ID: {result.inserted_id}")
-        return True
+    # ✅ Fetch bookings from MongoDB
+    bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
 
-    except Exception as e:
-        logger.error(f"❌ Failed to store booking in MongoDB: {e}")
-        return False
+    if not bookings:
+        logger.warning("⚠️ No bookings found for %s", user_email)
+        raise HTTPException(status_code=404, detail="⚠️ No bookings found!")
 
-
-# ✅ Send Email Confirmation for Booking
-def send_booking_confirmation_email(booking_data):
-    """
-    Send booking confirmation email.
-
-    Args:
-        booking_data (dict): Booking information.
-
-    Returns:
-        bool: True if email sent successfully, False otherwise.
-    """
-    # ✅ Extract necessary booking details
-    email = booking_data.get("email")
-    name = booking_data.get("name")
-    phone = booking_data.get("phone")
-    address = booking_data.get("address")
-    services = booking_data.get("services", [])
-
-    # ✅ Ensure fields exist and are consistent
-    if not all([email, name, phone, address, services]):
-        logger.error("❌ Missing booking details for email confirmation")
-        return False
-
-    # ✅ Format service details correctly
-    services_details = "\n".join([
-        f"- {service.get('serviceName', 'N/A')} by {service.get('providerName', 'N/A')}" 
-        for service in services
-    ])
-
-    # ✅ Email Subject and Body
-    subject = "🔔 Booking Confirmation - Homezy"
-    body = f"""
-    Dear {name},
-
-    🎉 Thank you for booking with Homezy!
-
-    📌 **Booking Details:**
-    - **Phone:** {phone}
-    - **Address:** {address}
-
-    🛠️ **Services Booked:**
-    {services_details}
-
-    ✅ Your booking is confirmed. We'll reach out shortly with further details.
-
-    Regards,  
-    The Homezy Team
-    """
-
-    # ✅ Send the Email
-    try:
-        send_email(email, subject, body)
-        logger.info(f"✅ Booking confirmation email sent to {email}")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Failed to send booking confirmation email: {e}")
-        return False
+    logger.info(f"✅ {len(bookings)} bookings found for {user_email}")
+    return {"bookings": bookings}

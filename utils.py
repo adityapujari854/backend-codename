@@ -9,8 +9,8 @@ from email_service import send_email
 load_dotenv()
 
 # ✅ MongoDB Config
-MONGO_URI = os.getenv("MONGO_URI")
-DB_NAME = "homezy_db"
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+DB_NAME = os.getenv("DATABASE_NAME", "homezy_db")
 RETRIES = 3
 RETRY_DELAY = 5  # seconds
 
@@ -25,12 +25,18 @@ def get_db():
         try:
             logger.info(f"🔗 Connecting to MongoDB (Attempt {attempt + 1}/{RETRIES})...")
             client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-            
+
             # ✅ Check if the connection is successful
             client.server_info()  
             logger.info("✅ MongoDB connection established successfully")
-            
-            return client[DB_NAME]
+
+            database = client[DB_NAME]
+
+            if database is None:
+                logger.error("❌ Database connection failed (None)")
+                return None
+
+            return database
 
         except errors.ServerSelectionTimeoutError as e:
             logger.error(f"❌ MongoDB connection timeout: {e}")
@@ -48,24 +54,34 @@ def get_db():
 def store_booking_in_db(booking_data):
     """
     Store booking details in MongoDB.
-    
+
     Args:
         booking_data (dict): Booking information.
+
+    Returns:
+        bool: True if booking stored successfully, False otherwise.
     """
     db = get_db()
-    if db:
-        bookings_collection = db["bookings"]
-        
-        # ✅ Insert the booking into MongoDB
-        try:
-            result = bookings_collection.insert_one(booking_data)
-            logger.info(f"✅ Booking stored in MongoDB with ID: {result.inserted_id}")
-            return True
-        except Exception as e:
-            logger.error(f"❌ Failed to store booking in MongoDB: {e}")
-            return False
-    else:
-        logger.error("❌ MongoDB connection not available.")
+
+    # ✅ Database Validation
+    if db is None:
+        logger.error("❌ Database connection is None")
+        return False
+
+    bookings_collection = db["bookings"] if db is not None else None
+
+    if bookings_collection is None:
+        logger.error("❌ Bookings collection is None")
+        return False
+
+    # ✅ Insert the booking into MongoDB
+    try:
+        result = bookings_collection.insert_one(booking_data)
+        logger.info(f"✅ Booking stored in MongoDB with ID: {result.inserted_id}")
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Failed to store booking in MongoDB: {e}")
         return False
 
 
@@ -76,24 +92,34 @@ def send_booking_confirmation_email(booking_data):
 
     Args:
         booking_data (dict): Booking information.
+
+    Returns:
+        bool: True if email sent successfully, False otherwise.
     """
     # ✅ Extract necessary booking details
     email = booking_data.get("email")
     name = booking_data.get("name")
     phone = booking_data.get("phone")
     address = booking_data.get("address")
-    
     services = booking_data.get("services", [])
-    # total_price = booking_data.get("total_price", "N/A")
 
-    # services_details = "\n".join([f"- {s['service_name']} ({s['provider_name']}): ₹{s['price']}" for s in services])
+    # ✅ Ensure fields exist and are consistent
+    if not all([email, name, phone, address, services]):
+        logger.error("❌ Missing booking details for email confirmation")
+        return False
+
+    # ✅ Format service details correctly
+    services_details = "\n".join([
+        f"- {service.get('serviceName', 'N/A')} by {service.get('providerName', 'N/A')}" 
+        for service in services
+    ])
 
     # ✅ Email Subject and Body
     subject = "🔔 Booking Confirmation - Homezy"
     body = f"""
     Dear {name},
 
-    Thank you for booking with Homezy! 🎉
+    🎉 Thank you for booking with Homezy!
 
     📌 **Booking Details:**
     - **Phone:** {phone}
