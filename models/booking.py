@@ -5,7 +5,7 @@ from database import bookings_collection
 from middlewares.middleware import get_current_user
 from email_service import send_email
 import logging
-from typing import List, Dict, Optional
+from typing import List, Optional
 
 # ✅ Configure Logging
 logging.basicConfig(level=logging.INFO)
@@ -18,7 +18,7 @@ bookings_router = APIRouter()
 class ServiceItem(BaseModel):
     serviceName: str = Field(..., min_length=2, max_length=100)
     providerName: str = Field(..., min_length=2, max_length=100)
-    remarks: Optional[str] = Field(default="", max_length=300)  # Optional remarks
+    remarks: Optional[str] = Field(default="", max_length=300)
 
 # ✅ Address Model
 class Address(BaseModel):
@@ -32,7 +32,7 @@ class Booking(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     phone: str = Field(..., min_length=10, max_length=15, pattern=r'^\d+$')
     address: Address
-    services: List[ServiceItem]  # ✅ Multiple services per booking
+    services: List[ServiceItem]
 
 # ✅ Dependency to get MongoDB Collection
 def get_bookings_collection() -> Collection:
@@ -41,8 +41,8 @@ def get_bookings_collection() -> Collection:
 # ✅ Create Booking API (Requires Authentication)
 @bookings_router.post("/", summary="Create a new booking")
 async def create_booking(
-    booking: Booking, 
-    authorization: str = Header(None), 
+    booking: Booking,
+    authorization: str = Header(None),
     collection: Collection = Depends(get_bookings_collection)
 ):
     """
@@ -66,7 +66,7 @@ async def create_booking(
             raise HTTPException(status_code=403, detail="Unauthorized booking request")
 
         # ✅ Validate service data
-        if not booking.services or len(booking.services) == 0:
+        if not booking.services:
             logger.error("❌ No services provided in the booking request")
             raise HTTPException(status_code=422, detail="Missing or invalid field: services")
 
@@ -95,9 +95,11 @@ async def create_booking(
                 [f"- {s.serviceName} by {s.providerName}" for s in booking.services]
             )
 
-            # ✅ Format Address Properly
+            # ✅ Format Address Properly with Line Breaks
             address = (
-                f"🏠 *Address:* {booking.address.flat}, {booking.address.road}, {booking.address.landmark}"
+                f"- Flat: {booking.address.flat}\n"
+                f"- Road: {booking.address.road}\n"
+                f"- Landmark: {booking.address.landmark}"
             )
 
             # ✅ Email Content
@@ -114,15 +116,11 @@ async def create_booking(
                 "The Homezy Team"
             )
 
-            # ✅ Send the email with sender info
+            # ✅ Send the email with proper parameters
             send_email(
-                recipient_email=booking.email,
+                to=booking.email,               # ✅ Corrected parameter
                 subject="Booking Confirmed - Homezy",
-                message=email_message,
-                sender={
-                    "name": "Homezy Services", 
-                    "email": "no-reply@homezy.com"
-                }
+                message=email_message
             )
 
             logger.info("✅ Email sent successfully to %s", booking.email)
