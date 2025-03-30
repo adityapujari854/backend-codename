@@ -5,7 +5,6 @@ from middlewares.middleware import get_current_user
 from utils import store_booking_in_db, send_booking_confirmation_email
 import logging
 from pydantic import ValidationError
-from typing import List
 
 # ✅ Initialize Router
 bookings_router = APIRouter()
@@ -29,26 +28,40 @@ async def create_booking(request: Request, authorization: str = Header(None)):
     """
     logger.info("📥 Received Booking Request")
 
-    # ✅ Authenticate User
-    user_email = get_current_user(authorization)
+    # ✅ Authenticate User with "Bearer" Token
+    if not authorization or not authorization.startswith("Bearer "):
+        logger.error("❌ Missing or invalid Authorization header format.")
+        raise HTTPException(status_code=401, detail="Invalid Authorization header format")
+
+    token = authorization.split(" ")[1]
+    user_email = get_current_user(f"Bearer {token}")
 
     try:
-        # ✅ Parse Incoming Data
         data = await request.json()
 
-        # ✅ Validate Required Fields
+        # ✅ Validate required fields
         required_fields = ["email", "name", "phone", "address", "services"]
+
         for field in required_fields:
             if field not in data or not data[field]:
                 logger.warning(f"❌ Missing field: {field}")
                 raise HTTPException(status_code=422, detail=f"Missing or invalid field: {field}")
 
-        # ✅ Authorization Check: Ensure user is booking for themselves
+        # ✅ Ensure the authenticated user is booking for themselves
         if user_email != data.get("email"):
             logger.warning("❌ Unauthorized Booking Attempt by %s", user_email)
             raise HTTPException(status_code=403, detail="Unauthorized booking request")
 
-        # ✅ Validate Services List
+        # ✅ Validate address structure
+        address = data.get("address", {})
+        address_fields = ["flat", "street", "landmark", "city", "state", "pincode"]
+
+        for field in address_fields:
+            if field not in address or not address[field]:
+                logger.warning(f"❌ Missing address field: {field}")
+                raise HTTPException(status_code=422, detail=f"Missing or invalid address field: {field}")
+
+        # ✅ Validate services list
         if not isinstance(data["services"], list) or len(data["services"]) == 0:
             logger.error("❌ Invalid or empty services list")
             raise HTTPException(status_code=422, detail="Invalid services list")
@@ -58,7 +71,7 @@ async def create_booking(request: Request, authorization: str = Header(None)):
                 logger.error("❌ Missing service details: %s", service)
                 raise HTTPException(status_code=422, detail="Missing or invalid service details")
 
-        # ✅ Check MongoDB Collection
+        # ✅ Database Validation: Check if MongoDB collection is valid
         if bookings_collection is None:
             logger.error("❌ Database collection is not initialized")
             raise HTTPException(status_code=500, detail="Database collection is None")
@@ -68,54 +81,15 @@ async def create_booking(request: Request, authorization: str = Header(None)):
             logger.error("❌ Database Insertion Failed for Booking: %s", data)
             raise HTTPException(status_code=500, detail="Failed to store booking in database")
 
-        # ✅ Send Confirmation Email with Proper Address Formatting
-        try:
-            # ✅ Format Address Properly
-            address = (
-                f"- **Flat:** {data['address'].get('flat', 'N/A')}\n"
-                f"- **Street:** {data['address'].get('street', 'N/A')}\n"
-                f"- **Landmark:** {data['address'].get('landmark', 'N/A')}\n"
-                f"- **City:** {data['address'].get('city', 'N/A')}\n"
-                f"- **State:** {data['address'].get('state', 'N/A')}\n"
-                f"- **Pincode:** {data['address'].get('pincode', 'N/A')}"
-            )
+        # ✅ Send confirmation email with all address fields
+        email_status = send_booking_confirmation_email(data)
+        if not email_status:
+            logger.error("❌ Email Sending Failed for Booking: %s", data)
+            raise HTTPException(status_code=500, detail="Failed to send confirmation email")
 
-            # ✅ Format Services List
-            services_list = "\n".join(
-                [f"- {s['serviceName']} by {s['providerName']}" for s in data["services"]]
-            )
+        logger.info("✅ Booking confirmed & email sent to %s", data["email"])
 
-            # ✅ Email Content
-            email_message = (
-                f"Dear {data['name']},\n\n"
-                "🎉 Thank you for booking with Homezy!\n\n"
-                "📌 *Booking Details:*\n"
-                f"- 📞 Phone: {data['phone']}\n"
-                f"{address}\n\n"
-                "🛠️ *Services Booked:*\n"
-                f"{services_list}\n\n"
-                "✅ Your booking is confirmed. We'll reach out shortly with further details.\n\n"
-                "Regards,\n"
-                "The Homezy Team"
-            )
-
-            # ✅ Send Email
-            email_status = send_booking_confirmation_email(
-                to=data["email"],
-                subject="Booking Confirmed - Homezy",
-                message=email_message
-            )
-
-            if not email_status:
-                logger.error("❌ Email Sending Failed for Booking: %s", data)
-                raise HTTPException(status_code=500, detail="Failed to send confirmation email")
-
-            logger.info("✅ Booking confirmed & email sent to %s", data["email"])
-            return {"message": "✅ Booking confirmed & email sent!"}
-
-        except Exception as e:
-            logger.error("⚠️ Email Sending Failed: %s", str(e))
-            raise HTTPException(status_code=500, detail="Booking confirmed, but email failed to send")
+        return {"message": "✅ Booking confirmed & email sent!"}
 
     except ValidationError as e:
         logger.error("❌ Validation Error: %s", str(e))
@@ -138,10 +112,13 @@ def get_user_bookings(authorization: str = Header(None)):
     Returns:
         dict: User bookings.
     """
-    logger.info("📥 Fetching bookings for user")
-
     # ✅ Authenticate User
-    user_email = get_current_user(authorization)
+    if not authorization or not authorization.startswith("Bearer "):
+        logger.error("❌ Missing or invalid Authorization header format.")
+        raise HTTPException(status_code=401, detail="Invalid Authorization header format")
+
+    token = authorization.split(" ")[1]
+    user_email = get_current_user(f"Bearer {token}")
 
     # ✅ Database Validation: Check if MongoDB collection is valid
     if bookings_collection is None:

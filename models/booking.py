@@ -20,11 +20,14 @@ class ServiceItem(BaseModel):
     providerName: str = Field(..., min_length=2, max_length=100)
     remarks: Optional[str] = Field(default="", max_length=300)
 
-# ✅ Address Model
+# ✅ Updated Address Model with city, state, and pincode
 class Address(BaseModel):
     flat: str = Field(..., min_length=2, max_length=100)
-    road: str = Field(..., min_length=2, max_length=100)
+    street: str = Field(..., min_length=2, max_length=100)      # ✅ Changed from road to street
     landmark: str = Field(..., min_length=2, max_length=100)
+    city: str = Field(..., min_length=2, max_length=100)
+    state: str = Field(..., min_length=2, max_length=100)
+    pincode: str = Field(..., min_length=4, max_length=10, pattern=r'^\d+$')
 
 # ✅ Booking Model
 class Booking(BaseModel):
@@ -98,8 +101,11 @@ async def create_booking(
             # ✅ Format Address Properly with Line Breaks
             address = (
                 f"- Flat: {booking.address.flat}\n"
-                f"- Road: {booking.address.road}\n"
-                f"- Landmark: {booking.address.landmark}"
+                f"- Street: {booking.address.street}\n"  # ✅ Changed to street
+                f"- Landmark: {booking.address.landmark}\n"
+                f"- City: {booking.address.city}\n"
+                f"- State: {booking.address.state}\n"
+                f"- Pincode: {booking.address.pincode}"
             )
 
             # ✅ Email Content
