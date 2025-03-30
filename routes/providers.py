@@ -84,6 +84,7 @@ async def get_providers(
                     "latitude": str(place.get("geocodes", {}).get("main", {}).get("latitude", "N/A")),
                     "longitude": str(place.get("geocodes", {}).get("main", {}).get("longitude", "N/A")),
                     "rating": place.get("rating", "N/A"),
+                    "price": place.get("price", {}).get("tier", "N/A")
             }
 
             # ✅ Classify Providers: Relevant vs Fallback
