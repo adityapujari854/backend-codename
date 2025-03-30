@@ -5,7 +5,6 @@ from middlewares.middleware import get_current_user
 from utils import store_booking_in_db, send_booking_confirmation_email
 import logging
 from pydantic import ValidationError
-from typing import List
 
 # ✅ Initialize Router
 bookings_router = APIRouter()
@@ -36,7 +35,7 @@ async def create_booking(request: Request, authorization: str = Header(None)):
         data = await request.json()
 
         # ✅ Validate required fields
-        required_fields = ["email", "name", "phone", "address", "services", "total_price"]
+        required_fields = ["email", "name", "phone", "address", "services"]
 
         for field in required_fields:
             if field not in data or not data[field]:
@@ -53,19 +52,9 @@ async def create_booking(request: Request, authorization: str = Header(None)):
             raise HTTPException(status_code=422, detail="Invalid services list")
 
         for service in data["services"]:
-            if "serviceName" not in service or "providerName" not in service or "price" not in service:
+            if "serviceName" not in service or "providerName" not in service:
                 logger.error("❌ Missing service details: %s", service)
                 raise HTTPException(status_code=422, detail="Missing or invalid service details")
-
-            if not isinstance(service["price"], (int, float)) or service["price"] <= 0:
-                logger.error("❌ Invalid price in service: %s", service)
-                raise HTTPException(status_code=422, detail="Invalid price value in services")
-
-        # ✅ Ensure total price matches sum of all services
-        calculated_total = sum(service["price"] for service in data["services"])
-        if calculated_total != data["total_price"]:
-            logger.warning("⚠️ Mismatch in total price calculation: Expected %s, Got %s", calculated_total, data["total_price"])
-            raise HTTPException(status_code=422, detail="Total price mismatch")
 
         # ✅ Store booking in MongoDB
         if not store_booking_in_db(data):

@@ -18,7 +18,7 @@ bookings_router = APIRouter()
 class ServiceItem(BaseModel):
     serviceName: str = Field(..., min_length=2, max_length=100)
     providerName: str = Field(..., min_length=2, max_length=100)
-    price: float = Field(..., gt=0)  # Accepts both `int` and `float`
+    # price: float = Field(..., gt=0)  # Accepts both `int` and `float`
     remarks: Optional[str] = Field(default="", max_length=300)  # Optional remarks
 
 # ✅ Booking Model (Updated to Support Multiple Services)
@@ -28,7 +28,7 @@ class Booking(BaseModel):
     phone: str = Field(..., min_length=10, max_length=15, pattern=r'^\d+$')
     address: str = Field(..., min_length=5, max_length=200)
     services: List[ServiceItem]  # ✅ Multiple services per booking
-    total_price: float = Field(..., gt=0)  # Sum of all service prices
+    # total_price: float = Field(..., gt=0)  # Sum of all service prices
 
 # ✅ Dependency to get MongoDB Collection
 def get_bookings_collection() -> Collection:
@@ -61,10 +61,10 @@ async def create_booking(
                 raise HTTPException(status_code=422, detail="Missing or invalid service details")
 
         # ✅ Calculate total price
-        calculated_total = sum(service.price for service in booking.services)
-        if calculated_total != booking.total_price:
-            logger.warning("⚠️ Mismatch in total price calculation: Expected %s, Got %s", calculated_total, booking.total_price)
-            raise HTTPException(status_code=422, detail="Total price mismatch")
+        # calculated_total = sum(service.price for service in booking.services)
+        # if calculated_total != booking.total_price:
+        #     logger.warning("⚠️ Mismatch in total price calculation: Expected %s, Got %s", calculated_total, booking.total_price)
+        #     raise HTTPException(status_code=422, detail="Total price mismatch")
 
         # ✅ Insert booking into MongoDB
         try:
@@ -78,12 +78,12 @@ async def create_booking(
         # ✅ Send Confirmation Email
         try:
             service_details = "\n".join(
-                [f"- {s.serviceName} with {s.providerName}: ₹{s.price}" for s in booking.services]
+                [f"- {s.serviceName} with {s.providerName}: ₹ N/A " for s in booking.services]
             )
             send_email(
                 recipient_email=booking.email,
                 subject="Booking Confirmed - Homezy",
-                message=f"Your booking has been confirmed!\n\nDetails:\n{service_details}\nTotal: ₹{booking.total_price}"
+                message=f"Your booking has been confirmed!\n\nDetails:\n{service_details}\nTotal: ₹ N/A "
             )
             logger.info("✅ Email sent successfully to %s", booking.email)
             return {"message": "✅ Booking confirmed & email sent!"}
