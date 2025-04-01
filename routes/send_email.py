@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import os
 import logging
 import time
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 # ✅ Load environment variables
 load_dotenv()
@@ -25,6 +27,15 @@ if not SMTP_SERVER or not SMTP_USERNAME or not SMTP_PASSWORD:
 # ✅ Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ✅ Create FastAPI Router for Email Routes
+email_router = APIRouter()
+
+class EmailRequest(BaseModel):
+    to_email: str
+    subject: str
+    message: str
+    is_html: bool = False
 
 def send_email(to_email, subject, message, is_html=False):
     """Send email with retries and error handling."""
@@ -235,3 +246,18 @@ def get_otp_email_template(otp_code):
     </html>
     """
     return otp_email_template
+
+# ✅ Add Email Route to FastAPI
+@email_router.post("/send")
+async def send_email_endpoint(email_request: EmailRequest):
+    """API Endpoint to send an email."""
+    success = send_email(
+        email_request.to_email,
+        email_request.subject,
+        email_request.message,
+        email_request.is_html
+    )
+    if success:
+        return {"message": "✅ Email sent successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="❌ Failed to send email")
