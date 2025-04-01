@@ -115,7 +115,12 @@ def send_booking_confirmation_email(booking_data):
     ])
 
     # ✅ Format address with better structure (split by commas and strip extra spaces)
-    formatted_address = "\n".join([line.strip() for line in address.split(',')])
+    if isinstance(address, dict):
+        # If the address is a dictionary, format it as a string
+        formatted_address = "\n".join([f"{key.capitalize()}: {value}" for key, value in address.items()])
+    else:
+        # If the address is already a string, use it as-is
+        formatted_address = address
 
     # ✅ Email Subject and Body
     subject = "🔔 Booking Confirmation - Homezy"
