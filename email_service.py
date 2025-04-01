@@ -175,3 +175,66 @@ def get_booking_confirmation_email_template(booking_data):
     """
 
     return email_template
+
+
+def get_otp_email_template(otp_code):
+    """
+    Generate a HTML template for OTP email.
+    
+    Args:
+        otp_code (str): The OTP code to be included in the email.
+    
+    Returns:
+        str: HTML formatted string for email body
+    """
+    # ✅ OTP Email Template
+    otp_email_template = f"""
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f4f4f4;
+                padding: 20px;
+            }}
+            .container {{
+                background-color: #ffffff;
+                border-radius: 8px;
+                padding: 20px;
+                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            }}
+            h1 {{
+                color: #4CAF50;
+                text-align: center;
+            }}
+            .otp {{
+                font-size: 24px;
+                font-weight: bold;
+                color: #4CAF50;
+                text-align: center;
+                margin-top: 20px;
+            }}
+            .footer {{
+                font-size: 12px;
+                color: #888;
+                margin-top: 20px;
+                text-align: center;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Your OTP Code</h1>
+            <p>Dear User,</p>
+            <p>🎉 **Here is your OTP code for verification:**</p>
+            <div class="otp">{otp_code}</div>
+            <p>Use the OTP to complete your verification process.</p>
+            <div class="footer">
+                <p>Regards,</p>
+                <p>The Homezy Team</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return otp_email_template

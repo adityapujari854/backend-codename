@@ -122,32 +122,158 @@ def send_booking_confirmation_email(booking_data):
         # If the address is already a string, use it as-is
         formatted_address = address
 
-    # ✅ Email Subject and Body
-    subject = "🔔 Booking Confirmation - Homezy"
-    body = f"""
-    Dear {name},
-
-    🎉 **Thank you for booking with Homezy!**
-
-    📌 **Booking Details:**
-    - **Phone:** {phone}
-    - **Address:**
-        {formatted_address}
-
-    🛠️ **Services Booked:**
-    {services_details}
-
-    ✅ **Your booking is confirmed.** We'll reach out shortly with further details.
-
-    Regards,  
-    **The Homezy Team**
-    """
+    # ✅ Generate HTML Email Content for Booking Confirmation
+    booking_email_content = get_booking_confirmation_email_template(booking_data)
 
     # ✅ Send the Email
     try:
-        send_email(email, subject, body)
+        send_email(email, "🔔 Booking Confirmation - Homezy", booking_email_content, is_html=True)
         logger.info(f"✅ Booking confirmation email sent to {email}")
         return True
     except Exception as e:
         logger.error(f"❌ Failed to send booking confirmation email: {e}")
         return False
+
+
+# ✅ OTP Email Template
+def get_otp_email_template(otp_code):
+    """
+    Generate a HTML template for OTP email.
+
+    Args:
+        otp_code (str): The OTP code to be included in the email.
+
+    Returns:
+        str: HTML formatted string for email body
+    """
+    otp_email_template = f"""
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f4f4f4;
+                padding: 20px;
+            }}
+            .container {{
+                background-color: #ffffff;
+                border-radius: 8px;
+                padding: 20px;
+                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            }}
+            h1 {{
+                color: #4CAF50;
+                text-align: center;
+            }}
+            .otp {{
+                font-size: 24px;
+                font-weight: bold;
+                color: #4CAF50;
+                text-align: center;
+                margin-top: 20px;
+            }}
+            .footer {{
+                font-size: 12px;
+                color: #888;
+                margin-top: 20px;
+                text-align: center;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Your OTP Code</h1>
+            <p>Dear User,</p>
+            <p>🎉 **Here is your OTP code for verification:**</p>
+            <div class="otp">{otp_code}</div>
+            <p>Use the OTP to complete your verification process.</p>
+            <div class="footer">
+                <p>Regards,</p>
+                <p>The Homezy Team</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return otp_email_template
+
+
+# ✅ Booking Confirmation Email Template
+def get_booking_confirmation_email_template(booking_data):
+    """
+    Generate a HTML template for booking confirmation email.
+
+    Args:
+        booking_data (dict): The booking information.
+
+    Returns:
+        str: HTML formatted string for email body
+    """
+    name = booking_data.get("name", "User")
+    phone = booking_data.get("phone", "N/A")
+    address = booking_data.get("address", "N/A")
+    services = booking_data.get("services", [])
+    
+    services_details = "".join([
+        f"<li>{service.get('serviceName', 'N/A')} by {service.get('providerName', 'N/A')}</li>"
+        for service in services
+    ])
+    
+    if isinstance(address, dict):
+        formatted_address = "<br>".join([f"{key.capitalize()}: {value}" for key, value in address.items()])
+    else:
+        formatted_address = address
+
+    booking_email_template = f"""
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f4f4f4;
+                padding: 20px;
+            }}
+            .container {{
+                background-color: #ffffff;
+                border-radius: 8px;
+                padding: 20px;
+                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            }}
+            h1 {{
+                color: #4CAF50;
+                text-align: center;
+            }}
+            .details {{
+                font-size: 16px;
+                color: #333;
+                line-height: 1.6;
+            }}
+            .footer {{
+                font-size: 12px;
+                color: #888;
+                margin-top: 20px;
+                text-align: center;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Booking Confirmation</h1>
+            <p>Dear {name},</p>
+            <p>🎉 **Thank you for booking with Homezy!**</p>
+            <p class="details">
+                <b>Phone:</b> {phone}<br>
+                <b>Address:</b><br>{formatted_address}<br><br>
+                <b>Services Booked:</b><br>
+                <ul>{services_details}</ul>
+            </p>
+            <p>✅ **Your booking is confirmed.** We'll reach out shortly with further details.</p>
+            <div class="footer">
+                <p>Regards,</p>
+                <p>The Homezy Team</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return booking_email_template

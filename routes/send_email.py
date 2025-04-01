@@ -1,105 +1,237 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
-import redis
-import random
-from email_service import send_email
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from dotenv import load_dotenv
 import os
+import logging
+import time
 
-# ✅ Initialize Redis Connection
-redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+# ✅ Load environment variables
+load_dotenv()
 
-# ✅ Load Brevo API Key from environment
-BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+# ✅ Email Config
+BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL")
+SMTP_SERVER = os.getenv("SMTP_SERVER")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+RETRIES = 3
+RETRY_DELAY = 5  # seconds
 
-# ✅ Initialize Router
-email_router = APIRouter()
+# ✅ Ensure environment variables are set
+if not SMTP_SERVER or not SMTP_USERNAME or not SMTP_PASSWORD:
+    raise ValueError("❌ SMTP configuration is missing in environment variables")
 
-# ✅ Email Request Model
-class EmailRequest(BaseModel):
-    to: EmailStr
-    subject: str
-    message: str
+# ✅ Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-class OTPVerifyRequest(BaseModel):
-    email: EmailStr
-    otp: str
+def send_email(to_email, subject, message, is_html=False):
+    """Send email with retries and error handling."""
+    for attempt in range(RETRIES):
+        try:
+            # ✅ Set up the email message
+            msg = MIMEMultipart()
+            msg['From'] = BREVO_SENDER_EMAIL
+            msg['To'] = to_email
+            msg['Subject'] = subject
 
-# ✅ OTP Email Content Template
-def get_otp_email_template(otp: str):
+            # Attach the message body (HTML or plain text)
+            msg.attach(MIMEText(message, 'html' if is_html else 'plain'))
+
+            # ✅ Connect to the SMTP server
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                server.starttls()  # Start TLS encryption
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.sendmail(BREVO_SENDER_EMAIL, to_email, msg.as_string())
+
+            logger.info(f"✅ Email sent successfully to {to_email}")
+            return True
+
+        except smtplib.SMTPException as e:  # Only retry for SMTP-related errors
+            logger.error(f"❌ SMTP Error: {e}. Attempt {attempt + 1} of {RETRIES}")
+            time.sleep(RETRY_DELAY)
+
+        except Exception as e:
+            logger.error(f"❌ Unexpected Error: {e}")
+            return False  # Don't retry for non-SMTP errors
+
+    logger.error(f"❌ Failed to send email after {RETRIES} attempts")
+    return False
+
+def get_booking_confirmation_email_template(booking_data):
     """
-    Generate a custom OTP email template with a visually appealing design.
+    Generate a HTML template for booking confirmation email.
     
     Args:
-        otp (str): The OTP to be included in the email.
+        booking_data (dict): Contains information about the booking (name, email, services, etc.)
     
     Returns:
-        str: HTML content for the OTP email.
+        str: HTML formatted string for email body
     """
-    return f"""
-    <div style="font-family: Arial, sans-serif; color: #333;">
-        <div style="text-align: center; padding: 20px; background-color: #f0f0f0; border-radius: 8px;">
-            <h2 style="color: #007bff;">Your OTP Verification Code</h2>
-            <p style="font-size: 16px; color: #555;">
-                Hello, <br><br>
-                We have received a request to verify your email address. Please use the OTP below to complete the verification process.
-            </p>
-            <div style="font-size: 24px; font-weight: bold; color: #007bff; padding: 10px; background-color: #e0f7fa; border-radius: 6px;">
-                {otp}
+    # ✅ Extract necessary booking details
+    email = booking_data.get("email")
+    name = booking_data.get("name")
+    phone = booking_data.get("phone")
+    address = booking_data.get("address")
+    services = booking_data.get("services", [])
+
+    # ✅ Ensure fields exist and are consistent
+    if not all([email, name, phone, address, services]):
+        raise ValueError("❌ Missing essential booking details")
+
+    # ✅ Format service details correctly
+    services_details = "\n".join([ 
+        f"- {service.get('serviceName', 'N/A')} by {service.get('providerName', 'N/A')}" 
+        for service in services
+    ])
+
+    # ✅ Format address with better structure (split by commas and strip extra spaces)
+    if isinstance(address, dict):
+        # If the address is a dictionary, format it as a string
+        formatted_address = "\n".join([f"{key.capitalize()}: {value}" for key, value in address.items()])
+    else:
+        # If the address is already a string, use it as-is
+        formatted_address = address
+
+    # ✅ HTML Template for the Email Body
+    email_template = f"""
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f4f4f4;
+                padding: 20px;
+            }}
+            .container {{
+                background-color: #ffffff;
+                border-radius: 8px;
+                padding: 20px;
+                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            }}
+            h1 {{
+                color: #4CAF50;
+                text-align: center;
+            }}
+            .details {{
+                margin-bottom: 20px;
+            }}
+            .service {{
+                margin-bottom: 10px;
+            }}
+            .footer {{
+                font-size: 12px;
+                color: #888;
+                margin-top: 20px;
+                text-align: center;
+            }}
+            .cta {{
+                display: block;
+                background-color: #4CAF50;
+                color: white;
+                padding: 10px 20px;
+                text-decoration: none;
+                border-radius: 4px;
+                margin-top: 20px;
+                text-align: center;
+            }}
+            .cta:hover {{
+                background-color: #45a049;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Booking Confirmation - Homezy</h1>
+            <p>Dear {name},</p>
+            <p>🎉 **Thank you for booking with Homezy!**</p>
+
+            <div class="details">
+                <h3>Booking Details:</h3>
+                <p><strong>Phone:</strong> {phone}</p>
+                <p><strong>Address:</strong><br>{formatted_address}</p>
             </div>
-            <p style="font-size: 14px; color: #777; margin-top: 20px;">
-                This OTP is valid for 5 minutes only. If you didn't request this, please ignore this email.
-            </p>
+
+            <div class="services">
+                <h3>Services Booked:</h3>
+                <ul>
+                    {''.join([f'<li class="service">- {service.get("serviceName", "N/A")} by {service.get("providerName", "N/A")}</li>' for service in services])}
+                </ul>
+            </div>
+
+            <p>✅ Your booking is confirmed. We will reach out shortly with further details.</p>
+
+            <a href="https://homezy.com/my-bookings" class="cta">View My Bookings</a>
+
+            <div class="footer">
+                <p>Regards,</p>
+                <p>The Homezy Team</p>
+            </div>
         </div>
-    </div>
+    </body>
+    </html>
     """
+    return email_template
 
-# ✅ Function to Send Email via Brevo API (Updated with new template)
-def send_email_via_brevo(to: str, subject: str, message: str):
-    """Send email using Brevo API."""
-    try:
-        send_email(to, subject, message)
-    except HTTPException as e:
-        raise HTTPException(status_code=500, detail=f"Error sending email: {str(e)}")
+def get_otp_email_template(otp_code):
+    """
+    Generate a HTML template for OTP email.
 
-# ✅ API to Send Custom Emails
-@email_router.post("/send")
-def send_custom_email(email_request: EmailRequest):
-    try:
-        send_email_via_brevo(email_request.to, email_request.subject, email_request.message)
-        return {"message": "📨 Email sent successfully!"}
-    except HTTPException as e:
-        return {"error": str(e.detail)}
+    Args:
+        otp_code (str): The OTP code to be included in the email.
 
-# ✅ API to Send OTP Verification Email
-@email_router.post("/send-otp")
-def send_otp_email(email: EmailStr):
-    otp = str(random.randint(100000, 999999))
-
-    # ✅ Store OTP in Redis with 5-minute expiration
-    redis_client.setex(f"otp:{email}", 300, otp)
-
-    # ✅ Get OTP email content with enhanced visuals
-    otp_message = get_otp_email_template(otp)
-
-    # ✅ Send OTP email via Brevo API
-    try:
-        send_email_via_brevo(email, "Your OTP Verification Code", otp_message)
-        return {"message": "OTP sent successfully!"}
-    except HTTPException as e:
-        return {"error": str(e.detail)}
-
-# ✅ API to Verify OTP
-@email_router.post("/verify-otp")
-def verify_otp(request: OTPVerifyRequest):
-    stored_otp = redis_client.get(f"otp:{request.email}")
-
-    if stored_otp is None:
-        raise HTTPException(status_code=400, detail="OTP expired or not found")
-
-    if stored_otp != request.otp:
-        raise HTTPException(status_code=400, detail="Invalid OTP")
-
-    # ✅ OTP is valid, delete it after verification
-    redis_client.delete(f"otp:{request.email}")
-    
-    return {"message": "✅ OTP verified successfully!"}
+    Returns:
+        str: HTML formatted string for email body
+    """
+    # ✅ OTP Email Template
+    otp_email_template = f"""
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f4f4f4;
+                padding: 20px;
+            }}
+            .container {{
+                background-color: #ffffff;
+                border-radius: 8px;
+                padding: 20px;
+                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            }}
+            h1 {{
+                color: #4CAF50;
+                text-align: center;
+            }}
+            .otp {{
+                font-size: 24px;
+                font-weight: bold;
+                color: #4CAF50;
+                text-align: center;
+                margin-top: 20px;
+            }}
+            .footer {{
+                font-size: 12px;
+                color: #888;
+                margin-top: 20px;
+                text-align: center;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Your OTP Code</h1>
+            <p>Dear User,</p>
+            <p>🎉 **Here is your OTP code for verification:**</p>
+            <div class="otp">{otp_code}</div>
+            <p>Use the OTP to complete your verification process.</p>
+            <div class="footer">
+                <p>Regards,</p>
+                <p>The Homezy Team</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return otp_email_template
