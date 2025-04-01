@@ -26,8 +26,8 @@ def fetch_providers_from_foursquare(category_name: str):
     headers = {"Authorization": FOURSQUARE_API_KEY}
     params = {
         "query": category_name,
-        "near": "Mumbai",  # Change this to dynamically fetch the user’s location
-        "limit": 5
+        "near": "Pune",  # Change this to dynamically fetch the user’s location
+        "limit": 10
     }
 
     try:
