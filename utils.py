@@ -114,7 +114,7 @@ def send_booking_confirmation_email(booking_data):
         for service in services
     ])
 
-    # ✅ Format address with better structure
+    # ✅ Format address with better structure (split by commas and strip extra spaces)
     formatted_address = "\n".join([line.strip() for line in address.split(',')])
 
     # ✅ Email Subject and Body
