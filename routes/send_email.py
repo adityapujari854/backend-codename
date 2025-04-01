@@ -30,7 +30,7 @@ def send_email(to: str, subject: str, message: str):
         "sender": {"name": "Homezy Services", "email": "no-reply@homezy.com"},
         "to": [{"email": to}],
         "subject": subject,
-        "htmlContent": f"<p>{message.replace('\n', '<br>')}</p>"
+        "htmlContent": f"<html><body>{message}</body></html>"
     }
 
     headers = {
@@ -61,8 +61,27 @@ def send_otp_email(email: EmailStr):
     # ✅ Store OTP in Redis with 5-minute expiration
     redis_client.setex(f"otp:{email}", 300, otp)
 
+    # ✅ OTP email content with better visuals
+    otp_message = f"""
+    <div style="font-family: Arial, sans-serif; color: #333;">
+        <div style="text-align: center; padding: 20px; background-color: #f0f0f0; border-radius: 8px;">
+            <h2 style="color: #007bff;">Your OTP Verification Code</h2>
+            <p style="font-size: 16px; color: #555;">
+                Hello, <br><br>
+                We have received a request to verify your email address. Please use the OTP below to complete the verification process.
+            </p>
+            <div style="font-size: 24px; font-weight: bold; color: #007bff; padding: 10px; background-color: #e0f7fa; border-radius: 6px;">
+                {otp}
+            </div>
+            <p style="font-size: 14px; color: #777; margin-top: 20px;">
+                This OTP is valid for 5 minutes only. If you didn't request this, please ignore this email.
+            </p>
+        </div>
+    </div>
+    """
+
     try:
-        send_email(email, "Your OTP Verification Code", f"Your OTP code is: <strong>{otp}</strong>")
+        send_email(email, "Your OTP Verification Code", otp_message)
         return {"message": "OTP sent successfully!"}
     except HTTPException as e:
         return {"error": str(e.detail)}
