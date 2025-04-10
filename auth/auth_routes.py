@@ -2,11 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from database import users_collection
-from auth.jwt_handler import (
-    create_access_token,
-    create_refresh_token,
-    verify_token
-)
+from auth.jwt_handler import create_access_token, create_refresh_token, verify_token
 from utils import send_verification_email
 import os
 import random
@@ -20,24 +16,27 @@ BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 # ✅ Initialize Router
 auth_router = APIRouter()
 
-# ✅ Pydantic Models
+# ✅ User Signup Model
 class UserSignup(BaseModel):
     name: str
     email: EmailStr
     password: str
 
+# ✅ User Login Model
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+# ✅ Email Verification Model
 class EmailVerification(BaseModel):
     email: EmailStr
     otp: str
 
+# ✅ Refresh Token Input Model
 class RefreshRequest(BaseModel):
     refresh_token: str
 
-# ✅ OTP Storage (Temporary)
+# ✅ OTP Storage (Temporary, In-Memory)
 otp_storage = {}
 
 # ✅ Signup API
@@ -65,10 +64,11 @@ def signup(user: UserSignup):
 
     return {"message": "Signup successful. Please verify your email to proceed."}
 
-# ✅ Login API (Access + Refresh Tokens)
+# ✅ Login API — returns access token as `token` (for frontend compatibility)
 @auth_router.post("/login")
 def login(user: UserLogin):
     existing_user = users_collection.find_one({"email": user.email})
+    
     if not existing_user:
         raise HTTPException(status_code=400, detail="User not found")
 
@@ -78,13 +78,13 @@ def login(user: UserLogin):
     if not existing_user.get("is_verified", False):
         raise HTTPException(status_code=403, detail="Email not verified. Please verify to login.")
 
-    # ✅ Issue Access + Refresh tokens
+    # ✅ Generate tokens
     access_token = create_access_token(user.email)
     refresh_token = create_refresh_token(user.email)
 
     return {
         "message": "Login successful",
-        "access_token": access_token,
+        "token": access_token,  # ✅ matches frontend's expected key
         "refresh_token": refresh_token,
         "name": existing_user["name"]
     }
@@ -95,11 +95,11 @@ def refresh_access_token(data: RefreshRequest):
     email = verify_token(data.refresh_token, token_type="refresh")
     new_access_token = create_access_token(email)
     return {
-        "access_token": new_access_token,
+        "token": new_access_token,  # ✅ frontend can still store as `token`
         "message": "Access token refreshed"
     }
 
-# ✅ Verify Email OTP API
+# ✅ Verify Email OTP
 @auth_router.post("/verify-email")
 def verify_email(verification: EmailVerification):
     stored_otp = otp_storage.get(verification.email)
@@ -115,7 +115,7 @@ def verify_email(verification: EmailVerification):
 
     return {"message": "Email verified successfully"}
 
-# ✅ Logout API
+# ✅ Logout Endpoint (Token-based Logout, optional)
 @auth_router.post("/logout")
 def logout():
     return {"message": "Logged out successfully"}
