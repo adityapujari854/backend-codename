@@ -1,2 +1,2 @@
 # Import authentication handlers
-from .jwt_handler import create_access_token,create_refresh_token,verify_token,get_current_user
+from .jwt_handler import create_jwt_token, verify_jwt_token, get_current_user
