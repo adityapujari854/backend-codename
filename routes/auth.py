@@ -43,7 +43,7 @@ def create_jwt_token(email: str):
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
 
 # ✅ Verify JWT Token
-def verify_jwt_token(token: str):
+def verify_token(token: str):
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
         return payload["sub"]
@@ -58,7 +58,7 @@ def get_user_profile(authorization: str = Header(None)):
     if not authorization or "Bearer " not in authorization:
         raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
 
-    email = verify_jwt_token(authorization.split(" ")[1])  # Extract token & verify
+    email = verify_token(authorization.split(" ")[1])  # Extract token & verify
     user = users_collection.find_one({"email": email}, {"_id": 0, "password": 0, "otp": 0, "otp_expiry": 0})
 
     if not user:

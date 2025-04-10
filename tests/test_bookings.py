@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from main import app
 from database import bookings_collection, users_collection
-from auth.jwt_handler import create_jwt_token
+from auth.jwt_handler import create_access_token
 
 client = TestClient(app)
 
@@ -22,7 +22,7 @@ def test_user():
 @pytest.fixture
 def auth_headers(test_user):
     """Generate authentication headers for tests."""
-    token = create_jwt_token(test_user["email"])
+    token = create_access_token(test_user["email"])
     return {"Authorization": f"Bearer {token}"}
 
 def test_create_booking(auth_headers):

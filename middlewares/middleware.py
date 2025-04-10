@@ -1,7 +1,7 @@
 from fastapi import Request, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from auth.jwt_handler import verify_jwt_token
+from auth.jwt_handler import verify_token
 
 class JWTMiddleware(BaseHTTPMiddleware):
     """ ✅ Middleware for verifying JWT token in protected routes """
@@ -31,7 +31,7 @@ class JWTMiddleware(BaseHTTPMiddleware):
         token = auth_header.split(" ")[1]
 
         try:
-            user_email = verify_jwt_token(token)
+            user_email = verify_token(token)
             request.state.user = user_email  # Store user email in request state
         except HTTPException as e:
             raise HTTPException(status_code=401, detail=str(e.detail))
@@ -46,7 +46,7 @@ def get_current_user(authorization: str = Header(None)) -> str:
         raise HTTPException(status_code=401, detail="Authorization header missing or invalid format")
 
     token = authorization.split(" ")[1]  # Extract token from "Bearer <token>"
-    return verify_jwt_token(token)
+    return verify_token(token)
 
 
 def setup_middlewares(app):
