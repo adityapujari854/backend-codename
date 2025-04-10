@@ -27,7 +27,7 @@ def fetch_providers_from_foursquare(category_name: str):
     params = {
         "query": category_name,
         "near": "Pune",  # Change this to dynamically fetch the user’s location
-        "limit": 10
+        "limit": 15
     }
 
     try:
@@ -94,7 +94,7 @@ async def get_categories_with_providers(service_id: str, collection: Collection 
 
     return {"categories": categories_with_providers}
 
-# ✅ Fetch All Services with Pagination (Fixed)
+# ✅ Fetchcons All Services with Pagination (Fixed)
 @services_router.get("/")
 async def get_all_services(
     collection: Collection = Depends(get_services_collection),
@@ -105,6 +105,7 @@ async def get_all_services(
     
     # ✅ Fetch total count
     total_services = collection.count_documents({})
+    
     
     # ✅ Apply pagination
     services_cursor = collection.find({}, {"_id": 1, "name": 1, "description": 1, "image": 1, "categories": 1})
