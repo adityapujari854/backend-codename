@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from typing import Optional
+import random
 
 # ✅ Password Hashing Setup
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

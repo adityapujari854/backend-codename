@@ -33,11 +33,11 @@ SERVICE_KEYWORDS = {
 @providers_router.get("/", summary="Get service providers from Foursquare")
 async def get_providers(
     service_name: str = Query(..., title="Service Name", description="Name of the service to search"),
-    limit: int = Query(10, le=20, title="Limit", description="Number of providers to display (max: 20)")
+    limit: int = Query(15, le=20, title="Limit", description="Number of providers to display (max: 20)")
 ) -> Dict[str, Any]:
     """
     Fetch service providers based on a given service name and city (Pune) using the Foursquare API.
-    Ensures a minimum of 5-10 relevant providers are displayed.
+    Ensures a minimum of 5-15 relevant providers are displayed.
     """
 
     # ✅ Debugging logs
@@ -93,7 +93,7 @@ async def get_providers(
             else:
                 fallback_providers.append(provider)
 
-        # ✅ Ensure Minimum of 5-10 Providers
+        # ✅ Ensure Minimum of 5-15 Providers
         final_providers = relevant_providers[:limit]
 
         # 🔥 Add Fallback Providers if less than 5 relevant ones
@@ -101,8 +101,8 @@ async def get_providers(
             needed = 5 - len(final_providers)
             final_providers.extend(fallback_providers[:needed])
 
-        # ✅ Ensure 5-10 Providers are Displayed
-        final_providers = final_providers[:max(5, min(limit, 10))]
+        # ✅ Ensure 5-15 Providers are Displayed
+        final_providers = final_providers[:max(5, min(limit, 15))]
 
         print(f"✅ Providers Found: {len(final_providers)}")
         return {"providers": final_providers}

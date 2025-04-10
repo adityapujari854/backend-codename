@@ -99,7 +99,7 @@ async def get_categories_with_providers(service_id: str, collection: Collection 
 async def get_all_services(
     collection: Collection = Depends(get_services_collection),
     page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=100)
+    page_size: int = Query(15, ge=1, le=100)
 ):
     skip = (page - 1) * page_size
     

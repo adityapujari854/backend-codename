@@ -1,8 +1,12 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from database import users_collection
-from auth.jwt_handler import create_jwt_token, verify_jwt_token
+from auth.jwt_handler import (
+    create_access_token,
+    create_refresh_token,
+    verify_token
+)
 from utils import send_verification_email
 import os
 import random
@@ -16,21 +20,22 @@ BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 # ✅ Initialize Router
 auth_router = APIRouter()
 
-# ✅ User Signup Model
+# ✅ Pydantic Models
 class UserSignup(BaseModel):
     name: str
     email: EmailStr
     password: str
 
-# ✅ User Login Model
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-# ✅ Email Verification Model
 class EmailVerification(BaseModel):
     email: EmailStr
     otp: str
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 # ✅ OTP Storage (Temporary)
 otp_storage = {}
@@ -50,39 +55,48 @@ def signup(user: UserSignup):
         "name": user.name,
         "email": user.email,
         "password": hashed_password,
-        "is_verified": False  # Mark user as unverified initially
+        "is_verified": False
     })
 
-    # ✅ Generate & Send OTP for Email Verification
-    otp = str(random.randint(100000, 999999))  # 6-digit OTP
+    # ✅ Generate & Send OTP
+    otp = str(random.randint(100000, 999999))
     otp_storage[user.email] = otp
-    send_verification_email(user.email, otp)  # Send OTP via Brevo
+    send_verification_email(user.email, otp)
 
     return {"message": "Signup successful. Please verify your email to proceed."}
 
-# ✅ Login API
+# ✅ Login API (Access + Refresh Tokens)
 @auth_router.post("/login")
 def login(user: UserLogin):
     existing_user = users_collection.find_one({"email": user.email})
-    
     if not existing_user:
         raise HTTPException(status_code=400, detail="User not found")
 
-    # ✅ Verify Password
     if not pwd_context.verify(user.password, existing_user["password"]):
         raise HTTPException(status_code=400, detail="Invalid password")
 
-    # ✅ Check if Email is Verified
     if not existing_user.get("is_verified", False):
         raise HTTPException(status_code=403, detail="Email not verified. Please verify to login.")
 
-    # ✅ Generate JWT Token
-    token = create_jwt_token(user.email)
-    
+    # ✅ Issue Access + Refresh tokens
+    access_token = create_access_token(user.email)
+    refresh_token = create_refresh_token(user.email)
+
     return {
         "message": "Login successful",
-        "token": token,
-        "name": existing_user["name"],
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "name": existing_user["name"]
+    }
+
+# ✅ Refresh Access Token using Refresh Token
+@auth_router.post("/refresh-token")
+def refresh_access_token(data: RefreshRequest):
+    email = verify_token(data.refresh_token, token_type="refresh")
+    new_access_token = create_access_token(email)
+    return {
+        "access_token": new_access_token,
+        "message": "Access token refreshed"
     }
 
 # ✅ Verify Email OTP API
@@ -93,18 +107,15 @@ def verify_email(verification: EmailVerification):
     if not stored_otp or stored_otp != verification.otp:
         raise HTTPException(status_code=400, detail="Invalid OTP")
 
-    # ✅ Mark User as Verified
     users_collection.update_one(
         {"email": verification.email},
         {"$set": {"is_verified": True}}
     )
-
-    # ✅ Remove OTP after successful verification
     otp_storage.pop(verification.email, None)
 
     return {"message": "Email verified successfully"}
 
-# ✅ Logout API (Token-based logout)
+# ✅ Logout API
 @auth_router.post("/logout")
 def logout():
     return {"message": "Logged out successfully"}
