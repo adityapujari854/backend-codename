@@ -14,7 +14,7 @@ JWT_REFRESH_SECRET_KEY = os.getenv("JWT_REFRESH_SECRET_KEY", JWT_SECRET_KEY)
 if not JWT_SECRET_KEY:
     raise ValueError("❌ JWT_SECRET_KEY is missing! Please set it in your .env file.")
 
-# ✅ JWT Settings
+# ✅ Configurations
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 15))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 7))
@@ -39,11 +39,11 @@ def create_refresh_token(email: str) -> str:
     }
     return jwt.encode(payload, JWT_REFRESH_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
-# ✅ Function to Verify Any Token (access or refresh)
+# ✅ Generic Token Verifier
 def verify_token(token: str, token_type: str = "access") -> str:
     try:
-        key = JWT_SECRET_KEY if token_type == "access" else JWT_REFRESH_SECRET_KEY
-        payload = jwt.decode(token, key, algorithms=[JWT_ALGORITHM])
+        secret = JWT_SECRET_KEY if token_type == "access" else JWT_REFRESH_SECRET_KEY
+        payload = jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
 
         if payload.get("type") != token_type:
             raise HTTPException(status_code=403, detail=f"❌ Token is not a {token_type} token.")
@@ -55,7 +55,7 @@ def verify_token(token: str, token_type: str = "access") -> str:
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail=f"❌ Invalid {token_type} token.")
 
-# ✅ Middleware-style Dependency
+# ✅ Dependency to extract and verify access token from header
 def get_current_user(authorization: str = Header(None)) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="❌ Missing or malformed Authorization header.")
