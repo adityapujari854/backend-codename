@@ -1,12 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from database import users_collection
-from auth.jwt_handler import (
-    create_access_token,
-    create_refresh_token,
-    verify_token
-)
+from auth.jwt_handler import create_jwt_token, verify_jwt_token
 from utils import send_verification_email
 import os
 import random
@@ -20,24 +16,23 @@ BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 # ✅ Initialize Router
 auth_router = APIRouter()
 
-# ✅ Request Models
+# ✅ User Signup Model
 class UserSignup(BaseModel):
     name: str
     email: EmailStr
     password: str
 
+# ✅ User Login Model
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+# ✅ Email Verification Model
 class EmailVerification(BaseModel):
     email: EmailStr
     otp: str
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
-
-# ✅ Temporary OTP storage (in-memory)
+# ✅ OTP Storage (Temporary)
 otp_storage = {}
 
 # ✅ Signup API
@@ -47,18 +42,21 @@ def signup(user: UserSignup):
     if existing_user:
         raise HTTPException(status_code=400, detail="User already exists")
 
+    # ✅ Hash Password
     hashed_password = pwd_context.hash(user.password)
 
+    # ✅ Store User in Database (Initially Unverified)
     users_collection.insert_one({
         "name": user.name,
         "email": user.email,
         "password": hashed_password,
-        "is_verified": False
+        "is_verified": False  # Mark user as unverified initially
     })
 
-    otp = str(random.randint(100000, 999999))
+    # ✅ Generate & Send OTP for Email Verification
+    otp = str(random.randint(100000, 999999))  # 6-digit OTP
     otp_storage[user.email] = otp
-    send_verification_email(user.email, otp)
+    send_verification_email(user.email, otp)  # Send OTP via Brevo
 
     return {"message": "Signup successful. Please verify your email to proceed."}
 
@@ -70,33 +68,24 @@ def login(user: UserLogin):
     if not existing_user:
         raise HTTPException(status_code=400, detail="User not found")
 
+    # ✅ Verify Password
     if not pwd_context.verify(user.password, existing_user["password"]):
         raise HTTPException(status_code=400, detail="Invalid password")
 
+    # ✅ Check if Email is Verified
     if not existing_user.get("is_verified", False):
         raise HTTPException(status_code=403, detail="Email not verified. Please verify to login.")
 
-    access_token = create_access_token(user.email)
-    refresh_token = create_refresh_token(user.email)
-
+    # ✅ Generate JWT Token
+    token = create_jwt_token(user.email)
+    
     return {
         "message": "Login successful",
-        "token": access_token,            # ✅ this is what frontend expects in localStorage
-        "refresh_token": refresh_token,
-        "name": existing_user["name"]
+        "token": token,
+        "name": existing_user["name"],
     }
 
-# ✅ Refresh Token API
-@auth_router.post("/refresh-token")
-def refresh_access_token(data: RefreshRequest):
-    email = verify_token(data.refresh_token, token_type="refresh")
-    new_access_token = create_access_token(email)
-    return {
-        "token": new_access_token,  # ✅ return as "token" so frontend stores properly
-        "message": "Access token refreshed"
-    }
-
-# ✅ Email Verification API
+# ✅ Verify Email OTP API
 @auth_router.post("/verify-email")
 def verify_email(verification: EmailVerification):
     stored_otp = otp_storage.get(verification.email)
@@ -104,15 +93,18 @@ def verify_email(verification: EmailVerification):
     if not stored_otp or stored_otp != verification.otp:
         raise HTTPException(status_code=400, detail="Invalid OTP")
 
+    # ✅ Mark User as Verified
     users_collection.update_one(
         {"email": verification.email},
         {"$set": {"is_verified": True}}
     )
+
+    # ✅ Remove OTP after successful verification
     otp_storage.pop(verification.email, None)
 
     return {"message": "Email verified successfully"}
 
-# ✅ Logout API (stateless for now)
+# ✅ Logout API (Token-based logout)
 @auth_router.post("/logout")
 def logout():
     return {"message": "Logged out successfully"}
