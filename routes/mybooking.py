@@ -57,3 +57,4 @@ def get_my_bookings(authorization: str = Header(None)):
     except Exception as e:
         logger.exception("❌ Unexpected error while fetching bookings")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+    
