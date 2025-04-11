@@ -12,5 +12,5 @@ routers = [
     (email_router, "/api/email", ["Email"]),
     (services_router, "/api/services", ["Services"]),
     (providers_router, "/api/providers", ["Providers"]),
-    (mybooking_router, "/api", ["MyBooking"]),
+    (mybooking_router, "/api/mybooking", ["MyBookings"]),
 ]

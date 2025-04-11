@@ -9,7 +9,7 @@ from routes.providers import providers_router
 from routes.bookings import bookings_router
 from routes.services import services_router
 from routes.send_email import email_router
-from routes import mybooking
+from routes.mybooking import mybooking_router  # ✅ Correct import
 
 # ✅ Ensure Middleware Import Safety
 try:
@@ -35,17 +35,17 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],   # ✅ Allow all methods (GET, POST, DELETE, etc.)
-    allow_headers=["*"],   # ✅ Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ✅ Register Routers
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(bookings_router, prefix="/api/bookings", tags=["Bookings"])
-app.include_router(providers_router, prefix="/api/providers", tags=["Providers"])  # 🔥 Ensure correct path
+app.include_router(providers_router, prefix="/api/providers", tags=["Providers"])
 app.include_router(services_router, prefix="/api/services", tags=["Services"])
 app.include_router(email_router, prefix="/api/email", tags=["Email"])
-app.include_router(mybooking.mybooking_router)
+app.include_router(mybooking_router, prefix="/api/mybooking", tags=["MyBooking"])  # ✅ FIXED
 
 # ✅ Debugging: Print Registered Routes at Startup
 print("\n✅ Registered API Routes:")
@@ -53,23 +53,26 @@ print("  - /api/auth (Authentication)")
 print("  - /api/bookings (User Bookings)")
 print("  - /api/providers (Service Providers)")
 print("  - /api/services (Available Services)")
-print("  - /api/email (Email Notifications)\n")
+print("  - /api/email (Email Notifications)")
+print("  - /api/mybooking (User's Previous Bookings)\n")
 
 # ✅ Root API Endpoint
 @app.get("/", tags=["Root"])
 def home():
-    """🏠 Root API Endpoint"""
     return {"message": "Welcome to Homezy API!"}
 
-# ✅ Debugging Endpoint: Check Registered Routes
+# ✅ Debugging Endpoint
 @app.get("/debug/routes", tags=["Debug"])
 def get_registered_routes():
-    """✅ List all registered routes."""
-    routes = [{"path": route.path, "name": route.name} for route in app.routes]
-    return {"routes": routes}
+    return {
+        "routes": [
+            {"path": route.path, "name": route.name}
+            for route in app.routes
+        ]
+    }
 
-# ✅ Run the FastAPI App
+# ✅ Run App
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))  # ✅ Default to port 8000 if not specified
+    port = int(os.getenv("PORT", 8000))
     print(f"🚀 Starting FastAPI server on port {port}...")
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
