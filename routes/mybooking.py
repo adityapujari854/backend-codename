@@ -44,7 +44,9 @@ def get_my_bookings(authorization: str = Header(None)):
         raise HTTPException(status_code=500, detail="Database error")
 
     try:
+        # ✅ Query MongoDB for bookings by user email
         bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
+
         if not bookings:
             logger.info("⚠️ No bookings found for user: %s", user_email)
             raise HTTPException(status_code=404, detail="⚠️ No bookings found!")
