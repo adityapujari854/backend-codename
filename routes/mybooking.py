@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ✅ Fetch All Bookings for a User (Separate clean route)
-@mybooking_router.get("/api/mybooking", summary="Get all bookings for the logged-in user")
+@mybooking_router.get("/", summary="Get all bookings for the logged-in user")
 def get_my_bookings(authorization: str = Header(None)):
     """
     Fetch all bookings for the authenticated user (used by /mybooking frontend page).
