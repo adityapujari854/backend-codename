@@ -12,11 +12,11 @@ mybooking_router = APIRouter()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ✅ Fetch All Bookings for a User (Separate clean route)
-@mybooking_router.get("/", summary="Get all bookings for the logged-in user")
+# ✅ Fetch All Bookings for a User (used by frontend at /api/mybooking)
+@mybooking_router.get("/api/mybooking", summary="Get all bookings for the logged-in user")
 def get_my_bookings(authorization: str = Header(None)):
     """
-    Fetch all bookings for the authenticated user (used by /mybooking frontend page).
+    Fetch all bookings for the authenticated user (clean API used by /mybooking frontend page).
 
     Args:
         authorization (str): JWT token for authentication.
@@ -31,6 +31,7 @@ def get_my_bookings(authorization: str = Header(None)):
         logger.error("❌ Invalid or missing Authorization header")
         raise HTTPException(status_code=401, detail="Invalid Authorization header format")
 
+    # ✅ Extract Bearer Token and Get Email
     token = authorization.split(" ")[1]
     user_email = get_current_user(f"Bearer {token}")
 
@@ -38,13 +39,13 @@ def get_my_bookings(authorization: str = Header(None)):
         logger.warning("❌ Invalid token or user not found")
         raise HTTPException(status_code=403, detail="User authentication failed")
 
-    # ✅ Check if collection is available
+    # ✅ Check MongoDB Connection
     if bookings_collection is None:
         logger.critical("❌ Bookings collection not available in DB")
         raise HTTPException(status_code=500, detail="Database error")
 
     try:
-        # ✅ Query MongoDB for bookings by user email
+        # ✅ Query Bookings by Email
         bookings = list(bookings_collection.find({"email": user_email}, {"_id": 0}))
 
         if not bookings:
@@ -57,4 +58,3 @@ def get_my_bookings(authorization: str = Header(None)):
     except Exception as e:
         logger.exception("❌ Unexpected error while fetching bookings")
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
-    
