@@ -9,6 +9,7 @@ from routes.providers import providers_router
 from routes.bookings import bookings_router
 from routes.services import services_router
 from routes.send_email import email_router
+from routes import mybooking
 
 # ✅ Ensure Middleware Import Safety
 try:
@@ -44,6 +45,7 @@ app.include_router(bookings_router, prefix="/api/bookings", tags=["Bookings"])
 app.include_router(providers_router, prefix="/api/providers", tags=["Providers"])  # 🔥 Ensure correct path
 app.include_router(services_router, prefix="/api/services", tags=["Services"])
 app.include_router(email_router, prefix="/api/email", tags=["Email"])
+app.include_router(mybooking.mybooking_router)
 
 # ✅ Debugging: Print Registered Routes at Startup
 print("\n✅ Registered API Routes:")
