@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pymongo.collection import Collection
+from pymongo.errors import PyMongoError
 from database import services_collection
 from bson import ObjectId
 import logging
@@ -103,14 +104,23 @@ async def get_all_services(
     page_size: int = Query(15, ge=1, le=100)
 ):
     skip = (page - 1) * page_size
-    
-    # ✅ Fetch total count
-    total_services = collection.count_documents({})
-    
-    
-    # ✅ Apply pagination
-    services_cursor = collection.find({}, {"_id": 1, "name": 1, "description": 1, "image": 1, "categories": 1})
-    services = [convert_mongo_document(service) for service in services_cursor.skip(skip).limit(page_size)]
+
+    try:
+        total_services = collection.count_documents({})
+        services_cursor = collection.find(
+            {},
+            {"_id": 1, "name": 1, "description": 1, "image": 1, "categories": 1},
+        )
+        services = [
+            convert_mongo_document(service)
+            for service in services_cursor.skip(skip).limit(page_size)
+        ]
+    except PyMongoError as exc:
+        logger.exception("MongoDB request failed while fetching services")
+        raise HTTPException(
+            status_code=503,
+            detail="Service data is temporarily unavailable",
+        ) from exc
     
     if not services:
         logger.warning("❌ No services found in MongoDB")
@@ -124,6 +134,11 @@ async def get_all_services(
         "page_size": page_size,
         "services": services
     }
+
+# ✅ Health Check
+@services_router.get("/health")
+async def health_check():
+    return {"status": "ok", "message": "Service is running!"}
 
 # ✅ Fetch Single Service by Name
 @services_router.get("/{service_name}")
@@ -173,8 +188,3 @@ async def delete_service(service_name: str, collection: Collection = Depends(get
         raise HTTPException(status_code=404, detail=f"Service '{service_name}' not found")
 
     return {"message": "Service deleted successfully"}
-
-# ✅ Health Check
-@services_router.get("/health")
-async def health_check():
-    return {"status": "ok", "message": "Service is running!"}
