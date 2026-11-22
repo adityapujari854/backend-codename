@@ -1,20 +1,14 @@
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
-from pymongo import MongoClient
+from database import users_collection
 from datetime import datetime, timedelta
 import jwt, os, random, requests
 
 # ✅ Load environment variables
-MONGO_URI = os.getenv("MONGO_URI")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 BREVO_SENDER_EMAIL = os.getenv("BREVO_SENDER_EMAIL", "no-reply@homezy.com")
-
-# ✅ Connect to MongoDB
-client = MongoClient(MONGO_URI)
-db = client["homezy_db"]
-users_collection = db["users"]
 
 # ✅ Initialize Router & Password Hasher
 auth_router = APIRouter()

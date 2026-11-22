@@ -1,20 +1,27 @@
-from pymongo import MongoClient
 import os
 
-# ✅ Get MongoDB URI
+from dotenv import load_dotenv
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
+
+load_dotenv()
+
 MONGO_URI = os.getenv("MONGO_URI")
+if not MONGO_URI:
+    raise RuntimeError("MONGO_URI environment variable is required")
 
-# ✅ MongoDB Connection
+DB_NAME = os.getenv("DATABASE_NAME", "homezy_db")
+client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+db = client[DB_NAME]
+
 try:
-    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-    db = client["homezy_db"]
-    client.server_info()  # Force connection to check if it's working
-    print("✅ Connected to MongoDB")
-except Exception as e:
-    print(f"❌ MongoDB Connection Error: {e}")
-    exit(1)
+    client.admin.command("ping")
+except PyMongoError as exc:
+    client.close()
+    raise RuntimeError(
+        "Unable to connect to MongoDB. Verify MONGO_URI credentials and Atlas access."
+    ) from exc
 
-# ✅ Collections
 users_collection = db["users"]
 otp_collection = db["otp"]
 bookings_collection = db["bookings"]
