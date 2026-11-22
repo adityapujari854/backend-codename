@@ -95,6 +95,7 @@ async def get_categories_with_providers(service_id: str, collection: Collection 
     return {"categories": categories_with_providers}
 
 # ✅ Fetchcons All Services with Pagination (Fixed)
+@services_router.get("", include_in_schema=False)
 @services_router.get("/")
 async def get_all_services(
     collection: Collection = Depends(get_services_collection),

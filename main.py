@@ -11,13 +11,7 @@ from routes.services import services_router
 from routes.send_email import email_router
 from routes.mybooking import mybooking_router  # ✅ Explicit router import
 
-# ✅ Try Middleware Setup
-try:
-    from middlewares.middleware import setup_middlewares
-    middleware_available = True
-except ImportError:
-    middleware_available = False
-    print("⚠️ Middleware module not found. Skipping middleware setup.")
+from middlewares.middleware import setup_middlewares
 
 # ✅ Initialize FastAPI App
 app = FastAPI(
@@ -26,18 +20,8 @@ app = FastAPI(
     description="API for Homezy Platform",
 )
 
-# ✅ Apply Middleware
-if middleware_available:
-    setup_middlewares(app)
-
-# ✅ Enable CORS for frontend-backend connection
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 🔒 Change this in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ✅ Apply authentication middleware
+setup_middlewares(app)
 
 # ✅ Register All Routers
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
@@ -65,8 +49,18 @@ def home():
 @app.get("/debug/routes", tags=["Debug"])
 def get_registered_routes():
     return {
-        "routes": [{"path": route.path, "name": route.name} for route in app.routes]
+        "routes": [{"path": route.path, "name": route.name} for route in fastapi_app.routes]
     }
+
+# Wrap the full application so CORS headers are also present on error responses.
+fastapi_app = app
+app = CORSMiddleware(
+    app=fastapi_app,
+    allow_origins=["https://homezy2025.vercel.app"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ✅ App Entry Point
 if __name__ == "__main__":

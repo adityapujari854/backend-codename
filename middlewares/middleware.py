@@ -1,5 +1,4 @@
 from fastapi import Request, HTTPException, Header
-from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from auth.jwt_handler import verify_jwt_token
 
@@ -51,15 +50,4 @@ def get_current_user(authorization: str = Header(None)) -> str:
 
 def setup_middlewares(app):
     """ ✅ Function to apply middlewares to the FastAPI app """
-
-    # ✅ Enable CORS for frontend-backend communication
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  # ⚠️ Change to specific frontend URL in production
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
-    )
-
-    # ✅ Add JWT Authentication Middleware
     app.add_middleware(JWTMiddleware)
